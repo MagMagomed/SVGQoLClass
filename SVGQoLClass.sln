@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.37111.16
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SVGQoLClass", "SVGQoLClass\SVGQoLClass.csproj", "{998380FC-CA54-47D8-A08B-845D8DB90F84}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SVGQoLClassTests", "SVGQoLClassTests\SVGQoLClassTests.csproj", "{84079637-C7D4-4353-92A1-AC2EF5FA6902}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{998380FC-CA54-47D8-A08B-845D8DB90F84}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{998380FC-CA54-47D8-A08B-845D8DB90F84}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{998380FC-CA54-47D8-A08B-845D8DB90F84}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{998380FC-CA54-47D8-A08B-845D8DB90F84}.Release|Any CPU.Build.0 = Release|Any CPU
+		{84079637-C7D4-4353-92A1-AC2EF5FA6902}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{84079637-C7D4-4353-92A1-AC2EF5FA6902}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{84079637-C7D4-4353-92A1-AC2EF5FA6902}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{84079637-C7D4-4353-92A1-AC2EF5FA6902}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {3AB0FA42-09A4-40EC-B53B-BA95B06656A8}
+	EndGlobalSection
+EndGlobal
