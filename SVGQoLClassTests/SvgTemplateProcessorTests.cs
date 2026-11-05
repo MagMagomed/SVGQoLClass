@@ -580,5 +580,317 @@ namespace SVGQoLClass.Tests
             processor.Dispose();
             processor.GetByteArrayAsPdf();
         }
+        // ==================== Расширения: GetByteArray ====================
+
+        [TestMethod()]
+        public void ExtensionGetByteArray_ReturnsValidSvgBytes()
+        {
+            using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
+            {
+                // Вызов именно метода расширения (через статический класс),
+                // а не экземплярного метода.
+                byte[] bytes = SvgTemplateProcessorExtensions.GetByteArray(processor);
+
+                Assert.IsNotNull(bytes);
+                Assert.IsTrue(bytes.Length > 0, "Массив байт не должен быть пустым.");
+
+                string content = Encoding.UTF8.GetString(bytes);
+                StringAssert.Contains(content, "<svg");
+                StringAssert.Contains(content, "field_name");
+            }
+        }
+
+        [TestMethod()]
+        public void ExtensionGetByteArray_ReflectsFieldChanges()
+        {
+            using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
+            {
+                processor.SetFieldText("field_name", "Иван Петров");
+                byte[] bytes = SvgTemplateProcessorExtensions.GetByteArray(processor);
+
+                string content = Encoding.UTF8.GetString(bytes);
+                StringAssert.Contains(content, "Иван Петров");
+                Assert.IsFalse(content.Contains("Placeholder"));
+            }
+        }
+
+        [TestMethod()]
+        public void ExtensionGetByteArray_MatchesInstanceMethod()
+        {
+            using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
+            {
+                byte[] instanceResult = processor.GetByteArray();
+                byte[] extensionResult = SvgTemplateProcessorExtensions.GetByteArray(processor);
+
+                CollectionAssert.AreEqual(instanceResult, extensionResult,
+                    "Метод расширения должен давать тот же результат, что и экземплярный.");
+            }
+        }
+
+        [TestMethod()]
+        [ExpectedException(typeof(ArgumentNullException))]
+        public void ExtensionGetByteArray_NullProcessor_Throws()
+        {
+            SvgTemplateProcessorExtensions.GetByteArray(null);
+        }
+
+        [TestMethod()]
+        [ExpectedException(typeof(ObjectDisposedException))]
+        public void ExtensionGetByteArray_DisposedProcessor_Throws()
+        {
+            var processor = SvgTemplateProcessor.FromFile(_templatePath);
+            processor.Dispose();
+            SvgTemplateProcessorExtensions.GetByteArray(processor);
+        }
+
+        // ==================== Расширения: GetByteArrayAsPdf ====================
+
+        [TestMethod()]
+        public void ExtensionGetByteArrayAsPdf_ReturnsValidPdfBytes()
+        {
+            using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
+            {
+                byte[] bytes = SvgTemplateProcessorExtensions.GetByteArrayAsPdf(processor, SKColors.White);
+
+                Assert.IsNotNull(bytes);
+                Assert.IsTrue(bytes.Length > 0, "PDF-байты не должны быть пустыми.");
+                Assert.AreEqual("%PDF-", Encoding.ASCII.GetString(bytes, 0, 5));
+            }
+        }
+
+        [TestMethod()]
+        public void ExtensionGetByteArrayAsPdf_WithTransparentBackground_Works()
+        {
+            using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
+            {
+                // Вызов с null (прозрачный фон) через именованный аргумент,
+                // чтобы явно указать, что используется значение по умолчанию.
+                byte[] bytes = SvgTemplateProcessorExtensions.GetByteArrayAsPdf(
+                    processor, background: null);
+
+                Assert.IsTrue(bytes.Length > 0);
+                Assert.AreEqual("%PDF-", Encoding.ASCII.GetString(bytes, 0, 5));
+            }
+        }
+
+        [TestMethod()]
+        public void ExtensionGetByteArrayAsPdf_MatchesInstanceMethod()
+        {
+            using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
+            {
+                byte[] instanceResult = processor.GetByteArrayAsPdf(SKColors.White);
+                byte[] extensionResult = SvgTemplateProcessorExtensions.GetByteArrayAsPdf(processor, SKColors.White);
+
+                // PDF-файлы могут отличаться побайтово из-за встроенных метаданных,
+                // поэтому проверяем сигнатуру и размер, а не полное равенство.
+                Assert.AreEqual("%PDF-", Encoding.ASCII.GetString(instanceResult, 0, 5));
+                Assert.AreEqual("%PDF-", Encoding.ASCII.GetString(extensionResult, 0, 5));
+                Assert.IsTrue(instanceResult.Length > 100);
+                Assert.IsTrue(extensionResult.Length > 100);
+            }
+        }
+
+        [TestMethod()]
+        [ExpectedException(typeof(ArgumentNullException))]
+        public void ExtensionGetByteArrayAsPdf_NullProcessor_Throws()
+        {
+            SvgTemplateProcessorExtensions.GetByteArrayAsPdf(null);
+        }
+
+        [TestMethod()]
+        [ExpectedException(typeof(ObjectDisposedException))]
+        public void ExtensionGetByteArrayAsPdf_DisposedProcessor_Throws()
+        {
+            var processor = SvgTemplateProcessor.FromFile(_templatePath);
+            processor.Dispose();
+            SvgTemplateProcessorExtensions.GetByteArrayAsPdf(processor);
+        }
+
+        // ==================== Fluent: ToByteArray ====================
+
+        [TestMethod()]
+        public void ToByteArray_InChain_ReturnsValidSvgBytes()
+        {
+            byte[] bytes = SvgTemplateProcessor
+                .FromFile(_templatePath)
+                .WithFieldText("field_name", "Иван Петров")
+                .ToByteArray();
+
+            Assert.IsNotNull(bytes);
+            Assert.IsTrue(bytes.Length > 0);
+
+            string content = Encoding.UTF8.GetString(bytes);
+            StringAssert.Contains(content, "<svg");
+            StringAssert.Contains(content, "Иван Петров");
+            Assert.IsFalse(content.Contains("Placeholder"));
+        }
+
+        [TestMethod()]
+        public void ToByteArray_WithSizeChange_ReflectsNewSize()
+        {
+            byte[] bytes = SvgTemplateProcessor
+                .FromFile(_templatePath)
+                .WithFieldSize("field_rect", 300, 150)
+                .ToByteArray();
+
+            string content = Encoding.UTF8.GetString(bytes);
+            StringAssert.Contains(content, "width=\"300\"");
+            StringAssert.Contains(content, "height=\"150\"");
+        }
+
+        [TestMethod()]
+        public void ToByteArray_WithFittedText_ReflectsEstimatedSize()
+        {
+            // "0123456789" — 10 символов: width = 10*10 + 4*2 = 108; height = 10*1.5 + 4*2 = 23
+            byte[] bytes = SvgTemplateProcessor
+                .FromFile(_templatePath)
+                .WithFittedText("field_rect", "0123456789", charWidth: 10f, padding: 4f)
+                .ToByteArray();
+
+            string content = Encoding.UTF8.GetString(bytes);
+            StringAssert.Contains(content, "width=\"108\"");
+            StringAssert.Contains(content, "height=\"23\"");
+        }
+
+        [TestMethod()]
+        public void ToByteArray_EqualsInstanceGetByteArray()
+        {
+            byte[] fluentResult, instanceResult;
+
+            using (var processor = SvgTemplateProcessor
+                .FromFile(_templatePath)
+                .WithFieldText("field_name", "A"))
+            {
+                instanceResult = processor.GetByteArray();
+            }
+
+            fluentResult = SvgTemplateProcessor
+                .FromFile(_templatePath)
+                .WithFieldText("field_name", "A")
+                .ToByteArray();
+
+            CollectionAssert.AreEqual(instanceResult, fluentResult,
+                "ToByteArray должен давать тот же результат, что и GetByteArray.");
+        }
+
+        [TestMethod()]
+        [ExpectedException(typeof(ArgumentNullException))]
+        public void ToByteArray_NullProcessor_Throws()
+        {
+            SvgTemplateProcessorExtensions.ToByteArray(null);
+        }
+
+        [TestMethod()]
+        [ExpectedException(typeof(ObjectDisposedException))]
+        public void ToByteArray_DisposedProcessor_Throws()
+        {
+            var processor = SvgTemplateProcessor.FromFile(_templatePath);
+            processor.Dispose();
+            processor.ToByteArray();
+        }
+
+        // ==================== Fluent: ToPdfByteArray ====================
+
+        [TestMethod()]
+        public void ToPdfByteArray_InChain_ReturnsValidPdf()
+        {
+            byte[] bytes = SvgTemplateProcessor
+                .FromFile(_templatePath)
+                .WithFieldText("field_name", "Иван Петров")
+                .ToPdfByteArray(SKColors.White);
+
+            Assert.IsNotNull(bytes);
+            Assert.IsTrue(bytes.Length > 0);
+            Assert.AreEqual("%PDF-", Encoding.ASCII.GetString(bytes, 0, 5));
+        }
+
+        [TestMethod()]
+        public void ToPdfByteArray_WithTransparentBackground_Works()
+        {
+            byte[] bytes = SvgTemplateProcessor
+                .FromFile(_templatePath)
+                .WithFieldText("field_name", "Пётр")
+                .ToPdfByteArray(); // background не задан → прозрачный
+
+            Assert.IsTrue(bytes.Length > 0);
+            Assert.AreEqual("%PDF-", Encoding.ASCII.GetString(bytes, 0, 5));
+        }
+
+        [TestMethod()]
+        public void ToPdfByteArray_AfterSizeChange_ProducesValidPdf()
+        {
+            byte[] bytes = SvgTemplateProcessor
+                .FromFile(_templatePath)
+                .WithFieldSize("field_rect", 400, 200)
+                .ToPdfByteArray(SKColors.White);
+
+            Assert.IsTrue(bytes.Length > 0);
+            Assert.AreEqual("%PDF-", Encoding.ASCII.GetString(bytes, 0, 5));
+        }
+
+        [TestMethod()]
+        public void ToPdfByteArray_AndToByteArray_BothWorkOnSameProcessor()
+        {
+            using (var processor = SvgTemplateProcessor
+                .FromFile(_templatePath)
+                .WithFieldText("field_name", "Иван"))
+            {
+                byte[] svgBytes = processor.ToByteArray();
+                byte[] pdfBytes = processor.ToPdfByteArray(SKColors.White);
+
+                Assert.IsTrue(svgBytes.Length > 0);
+                Assert.IsTrue(pdfBytes.Length > 0);
+                Assert.AreEqual("%PDF-", Encoding.ASCII.GetString(pdfBytes, 0, 5));
+
+                string svgContent = Encoding.UTF8.GetString(svgBytes);
+                StringAssert.Contains(svgContent, "Иван");
+            }
+        }
+
+        [TestMethod()]
+        [ExpectedException(typeof(ArgumentNullException))]
+        public void ToPdfByteArray_NullProcessor_Throws()
+        {
+            SvgTemplateProcessorExtensions.ToPdfByteArray(null);
+        }
+
+        [TestMethod()]
+        [ExpectedException(typeof(ObjectDisposedException))]
+        public void ToPdfByteArray_DisposedProcessor_Throws()
+        {
+            var processor = SvgTemplateProcessor.FromFile(_templatePath);
+            processor.Dispose();
+            processor.ToPdfByteArray();
+        }
+
+        // ==================== Интеграционный сценарий ====================
+
+        [TestMethod()]
+        public void FluentChain_ProducesSvgAndPdfInMemory()
+        {
+            byte[] svgBytes = SvgTemplateProcessor
+                .FromFile(_templatePath)
+                .WithFieldText("field_name", "Иван Петров")
+                .WithFieldText("field_date", "05.11.2026")
+                .WithFieldSize("field_rect", 300, 120)
+                .ToByteArray();
+
+            byte[] pdfBytes = SvgTemplateProcessor
+                .FromFile(_templatePath)
+                .WithFieldText("field_name", "Иван Петров")
+                .WithFieldText("field_date", "05.11.2026")
+                .WithFieldSize("field_rect", 300, 120)
+                .ToPdfByteArray(SKColors.White);
+
+            Assert.IsTrue(svgBytes.Length > 0);
+            Assert.IsTrue(pdfBytes.Length > 0);
+
+            string svgContent = Encoding.UTF8.GetString(svgBytes);
+            StringAssert.Contains(svgContent, "Иван Петров");
+            StringAssert.Contains(svgContent, "05.11.2026");
+            StringAssert.Contains(svgContent, "width=\"300\"");
+
+            Assert.AreEqual("%PDF-", Encoding.ASCII.GetString(pdfBytes, 0, 5));
+        }
     }
 }

@@ -60,5 +60,113 @@ namespace SVGQoLClass
             processor.ConvertToPdf(path, background);
             return processor;
         }
+        /// <summary>
+        /// Возвращает текущее состояние SVG-документа в виде массива байт.
+        /// </summary>
+        /// <param name="processor">Целевой процессор.</param>
+        /// <returns>Массив байт с сериализованным SVG.</returns>
+        /// <exception cref="ArgumentNullException">
+        /// <paramref name="processor"/> равен <c>null</c>.
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">
+        /// Экземпляр уже освобождён.
+        /// </exception>
+        /// <remarks>
+        /// <para>
+        /// Является обёрткой над <see cref="SvgTemplateProcessor.GetByteArray"/>.
+        /// </para>
+        /// <para>
+        /// <b>Внимание:</b> сигнатура совпадает с экземплярным методом, поэтому
+        /// компилятор всегда предпочтёт экземплярный вызов, и это расширение
+        /// фактически не будет использовано в коде. Метод добавлен для симметрии
+        /// публичного API. Для fluent-цепочек используйте <see cref="ToByteArray"/>.
+        /// </para>
+        /// </remarks>
+        public static byte[] GetByteArray(this SvgTemplateProcessor processor)
+        {
+            if (processor == null) throw new ArgumentNullException(nameof(processor));
+            return processor.GetByteArray();
+        }
+
+        /// <summary>
+        /// Возвращает PDF-представление текущего SVG-документа в виде массива байт.
+        /// </summary>
+        /// <param name="processor">Целевой процессор.</param>
+        /// <param name="background">
+        /// Цвет фона PDF. Если <c>null</c>, используется прозрачный фон.
+        /// </param>
+        /// <returns>Массив байт с PDF-документом.</returns>
+        /// <exception cref="ArgumentNullException">
+        /// <paramref name="processor"/> равен <c>null</c>.
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">
+        /// Экземпляр уже освобождён.
+        /// </exception>
+        /// <exception cref="InvalidOperationException">
+        /// Не удалось отрендерить SVG в PDF (см. <see cref="SvgTemplateProcessor.GetByteArrayAsPdf"/>).
+        /// </exception>
+        /// <remarks>
+        /// <b>Внимание:</b> как и <see cref="GetByteArray"/>, эта перегрузка
+        /// перекрывается экземплярным методом. Для fluent-цепочек используйте
+        /// <see cref="ToPdfByteArray"/>.
+        /// </remarks>
+        public static byte[] GetByteArrayAsPdf(
+            this SvgTemplateProcessor processor, SKColor? background = null)
+        {
+            if (processor == null) throw new ArgumentNullException(nameof(processor));
+            return processor.GetByteArrayAsPdf(background);
+        }
+
+        // ==================== FLUENT-FRIENDLY АЛЬТЕРНАТИВЫ ====================
+
+        /// <summary>
+        /// Терминальная операция fluent-цепочки: возвращает SVG как массив байт.
+        /// В отличие от <see cref="GetByteArray"/>, это имя не перекрывается
+        /// экземплярным методом и реально используется в цепочках.
+        /// </summary>
+        /// <param name="processor">Целевой процессор.</param>
+        /// <returns>Массив байт с сериализованным SVG.</returns>
+        /// <exception cref="ArgumentNullException">
+        /// <paramref name="processor"/> равен <c>null</c>.
+        /// </exception>
+        /// <example>
+        /// <code>
+        /// byte[] bytes = SvgTemplateProcessor
+        ///     .FromFile("template.svg")
+        ///     .WithFieldText("field_name", "Иван Петров")
+        ///     .ToByteArray();
+        /// </code>
+        /// </example>
+        public static byte[] ToByteArray(this SvgTemplateProcessor processor)
+        {
+            if (processor == null) throw new ArgumentNullException(nameof(processor));
+            return processor.GetByteArray();
+        }
+
+        /// <summary>
+        /// Терминальная операция fluent-цепочки: возвращает PDF как массив байт.
+        /// </summary>
+        /// <param name="processor">Целевой процессор.</param>
+        /// <param name="background">
+        /// Цвет фона PDF. Если <c>null</c>, используется прозрачный фон.
+        /// </param>
+        /// <returns>Массив байт с PDF-документом.</returns>
+        /// <exception cref="ArgumentNullException">
+        /// <paramref name="processor"/> равен <c>null</c>.
+        /// </exception>
+        /// <example>
+        /// <code>
+        /// byte[] pdf = SvgTemplateProcessor
+        ///     .FromFile("template.svg")
+        ///     .WithFieldText("field_name", "Иван Петров")
+        ///     .ToPdfByteArray(SKColors.White);
+        /// </code>
+        /// </example>
+        public static byte[] ToPdfByteArray(
+            this SvgTemplateProcessor processor, SKColor? background = null)
+        {
+            if (processor == null) throw new ArgumentNullException(nameof(processor));
+            return processor.GetByteArrayAsPdf(background);
+        }
     }
 }
