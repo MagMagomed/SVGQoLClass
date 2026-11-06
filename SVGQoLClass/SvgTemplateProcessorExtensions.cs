@@ -60,28 +60,11 @@ namespace SVGQoLClass
             processor.ConvertToPdf(path, background);
             return processor;
         }
+
         /// <summary>
-        /// Возвращает текущее состояние SVG-документа в виде массива байт.
+        /// Обёртка над <see cref="SvgTemplateProcessor.GetByteArray"/>.
+        /// Перекрывается экземплярным методом; для цепочек используйте <see cref="ToByteArray"/>.
         /// </summary>
-        /// <param name="processor">Целевой процессор.</param>
-        /// <returns>Массив байт с сериализованным SVG.</returns>
-        /// <exception cref="ArgumentNullException">
-        /// <paramref name="processor"/> равен <c>null</c>.
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">
-        /// Экземпляр уже освобождён.
-        /// </exception>
-        /// <remarks>
-        /// <para>
-        /// Является обёрткой над <see cref="SvgTemplateProcessor.GetByteArray"/>.
-        /// </para>
-        /// <para>
-        /// <b>Внимание:</b> сигнатура совпадает с экземплярным методом, поэтому
-        /// компилятор всегда предпочтёт экземплярный вызов, и это расширение
-        /// фактически не будет использовано в коде. Метод добавлен для симметрии
-        /// публичного API. Для fluent-цепочек используйте <see cref="ToByteArray"/>.
-        /// </para>
-        /// </remarks>
         public static byte[] GetByteArray(this SvgTemplateProcessor processor)
         {
             if (processor == null) throw new ArgumentNullException(nameof(processor));
@@ -89,27 +72,9 @@ namespace SVGQoLClass
         }
 
         /// <summary>
-        /// Возвращает PDF-представление текущего SVG-документа в виде массива байт.
+        /// Обёртка над <see cref="SvgTemplateProcessor.GetByteArrayAsPdf"/>.
+        /// Перекрывается экземплярным методом; для цепочек используйте <see cref="ToPdfByteArray"/>.
         /// </summary>
-        /// <param name="processor">Целевой процессор.</param>
-        /// <param name="background">
-        /// Цвет фона PDF. Если <c>null</c>, используется прозрачный фон.
-        /// </param>
-        /// <returns>Массив байт с PDF-документом.</returns>
-        /// <exception cref="ArgumentNullException">
-        /// <paramref name="processor"/> равен <c>null</c>.
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">
-        /// Экземпляр уже освобождён.
-        /// </exception>
-        /// <exception cref="InvalidOperationException">
-        /// Не удалось отрендерить SVG в PDF (см. <see cref="SvgTemplateProcessor.GetByteArrayAsPdf"/>).
-        /// </exception>
-        /// <remarks>
-        /// <b>Внимание:</b> как и <see cref="GetByteArray"/>, эта перегрузка
-        /// перекрывается экземплярным методом. Для fluent-цепочек используйте
-        /// <see cref="ToPdfByteArray"/>.
-        /// </remarks>
         public static byte[] GetByteArrayAsPdf(
             this SvgTemplateProcessor processor, SKColor? background = null)
         {
@@ -121,22 +86,7 @@ namespace SVGQoLClass
 
         /// <summary>
         /// Терминальная операция fluent-цепочки: возвращает SVG как массив байт.
-        /// В отличие от <see cref="GetByteArray"/>, это имя не перекрывается
-        /// экземплярным методом и реально используется в цепочках.
         /// </summary>
-        /// <param name="processor">Целевой процессор.</param>
-        /// <returns>Массив байт с сериализованным SVG.</returns>
-        /// <exception cref="ArgumentNullException">
-        /// <paramref name="processor"/> равен <c>null</c>.
-        /// </exception>
-        /// <example>
-        /// <code>
-        /// byte[] bytes = SvgTemplateProcessor
-        ///     .FromFile("template.svg")
-        ///     .WithFieldText("field_name", "Иван Петров")
-        ///     .ToByteArray();
-        /// </code>
-        /// </example>
         public static byte[] ToByteArray(this SvgTemplateProcessor processor)
         {
             if (processor == null) throw new ArgumentNullException(nameof(processor));
@@ -146,65 +96,16 @@ namespace SVGQoLClass
         /// <summary>
         /// Терминальная операция fluent-цепочки: возвращает PDF как массив байт.
         /// </summary>
-        /// <param name="processor">Целевой процессор.</param>
-        /// <param name="background">
-        /// Цвет фона PDF. Если <c>null</c>, используется прозрачный фон.
-        /// </param>
-        /// <returns>Массив байт с PDF-документом.</returns>
-        /// <exception cref="ArgumentNullException">
-        /// <paramref name="processor"/> равен <c>null</c>.
-        /// </exception>
-        /// <example>
-        /// <code>
-        /// byte[] pdf = SvgTemplateProcessor
-        ///     .FromFile("template.svg")
-        ///     .WithFieldText("field_name", "Иван Петров")
-        ///     .ToPdfByteArray(SKColors.White);
-        /// </code>
-        /// </example>
         public static byte[] ToPdfByteArray(
             this SvgTemplateProcessor processor, SKColor? background = null)
         {
             if (processor == null) throw new ArgumentNullException(nameof(processor));
             return processor.GetByteArrayAsPdf(background);
         }
+
         /// <summary>
-        /// Fluent-обёртка над <see cref="SvgTemplateProcessor.SetFieldTextWithAutoWrap"/>:
-        /// устанавливает текст с автоматическим переносом строк, при необходимости
-        /// создавая <c>SvgText</c> поверх <c>SvgRectangle</c> с тем же id и увеличивая
-        /// высоту прямоугольника под число строк.
+        /// Fluent-обёртка над <see cref="SvgTemplateProcessor.SetFieldTextWithAutoWrap"/>.
         /// </summary>
-        /// <param name="processor">Целевой процессор.</param>
-        /// <param name="fieldId">
-        /// id текстового элемента или прямоугольника, поверх которого нужно
-        /// разместить текст.
-        /// </param>
-        /// <param name="text">Текст для вставки.</param>
-        /// <param name="fontSize">Размер шрифта в единицах SVG.</param>
-        /// <param name="padding">Внутренний отступ от краёв прямоугольника.</param>
-        /// <param name="charWidthFactor">
-        /// Приблизительная ширина одного символа относительно размера шрифта.
-        /// Используется для эвристического переноса строк.
-        /// </param>
-        /// <returns>Тот же экземпляр <paramref name="processor"/> для продолжения цепочки.</returns>
-        /// <exception cref="ArgumentNullException">
-        /// <paramref name="processor"/> равен <c>null</c>.
-        /// </exception>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="fieldId"/> не задан, либо элемент с таким id не найден,
-        /// либо размер шрифта не положителен.
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">
-        /// Экземпляр уже освобождён.
-        /// </exception>
-        /// <example>
-        /// <code>
-        /// SvgTemplateProcessor
-        ///     .FromFile("template.svg")
-        ///     .WithAutoWrapText("field_rect", "Очень длинный текст…", fontSize: 14)
-        ///     .SaveTo("output.svg");
-        /// </code>
-        /// </example>
         public static SvgTemplateProcessor WithAutoWrapText(
             this SvgTemplateProcessor processor,
             string fieldId,
@@ -220,41 +121,8 @@ namespace SVGQoLClass
         }
 
         /// <summary>
-        /// Пакетная fluent-обёртка над <see cref="SvgTemplateProcessor.SetFieldTextWithAutoWrap"/>:
-        /// последовательно применяет авто-перенос к нескольким полям.
-        /// Удобна, когда поля задаются из словаря (например, из БД или JSON).
+        /// Пакетная fluent-обёртка над <see cref="SvgTemplateProcessor.SetFieldTextWithAutoWrap"/>.
         /// </summary>
-        /// <param name="processor">Целевой процессор.</param>
-        /// <param name="fields">Словарь «id поля → текст».</param>
-        /// <param name="fontSize">Размер шрифта, применяемый ко всем полям.</param>
-        /// <param name="padding">Внутренний отступ от краёв прямоугольников.</param>
-        /// <param name="charWidthFactor">
-        /// Приблизительная ширина одного символа относительно размера шрифта.
-        /// </param>
-        /// <returns>Тот же экземпляр <paramref name="processor"/> для продолжения цепочки.</returns>
-        /// <exception cref="ArgumentNullException">
-        /// <paramref name="processor"/> или <paramref name="fields"/> равны <c>null</c>.
-        /// </exception>
-        /// <exception cref="ArgumentException">
-        /// Один из id не найден, либо размер шрифта не положителен.
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">
-        /// Экземпляр уже освобождён.
-        /// </exception>
-        /// <example>
-        /// <code>
-        /// var data = new Dictionary&lt;string, string&gt;
-        /// {
-        ///     ["field_fio"]  = "Иван Петров",
-        ///     ["field_addr"] = "г. Москва, ул. Ленина, д. 1",
-        /// };
-        ///
-        /// SvgTemplateProcessor
-        ///     .FromFile("template.svg")
-        ///     .WithAutoWrapFields(data, fontSize: 12)
-        ///     .SavePdfTo("output.pdf", SKColors.White);
-        /// </code>
-        /// </example>
         public static SvgTemplateProcessor WithAutoWrapFields(
             this SvgTemplateProcessor processor,
             IDictionary<string, string> fields,
@@ -271,60 +139,10 @@ namespace SVGQoLClass
 
             return processor;
         }
+
         /// <summary>
-        /// Fluent-обёртка над <see cref="SvgTemplateProcessor.SetFieldTextWithAutoFontSizing"/>:
-        /// устанавливает текст с автоматическим переносом строк и подбором размера
-        /// шрифта. Сначала ищет <c>SvgText</c> по id; если не найден — ищет
-        /// <c>SvgRectangle</c> с тем же id, создаёт поверх него <c>SvgText</c>
-        /// и, при необходимости, увеличивает высоту прямоугольника на
-        /// <paramref name="maxRowsIncrement"/> строк. Если новых строк недостаточно —
-        /// уменьшает размер шрифта, пока текст не впишется полностью.
+        /// Fluent-обёртка над <see cref="SvgTemplateProcessor.SetFieldTextWithAutoFontSizing"/>.
         /// </summary>
-        /// <param name="processor">Целевой процессор.</param>
-        /// <param name="fieldId">
-        /// id текстового элемента или прямоугольника, поверх которого нужно
-        /// разместить текст.
-        /// </param>
-        /// <param name="text">Текст для вставки.</param>
-        /// <param name="fontSize">
-        /// Исходный (максимальный) размер шрифта в единицах SVG.
-        /// При нехватке места будет уменьшаться.
-        /// </param>
-        /// <param name="maxRowsIncrement">
-        /// Максимальное количество строк, на которое разрешено увеличить высоту
-        /// прямоугольника. Строки считаются в размерности исходного
-        /// <paramref name="fontSize"/>.
-        /// </param>
-        /// <param name="padding">Внутренний отступ от краёв прямоугольника.</param>
-        /// <param name="charWidthFactor">
-        /// Приблизительная ширина одного символа относительно размера шрифта.
-        /// Используется для эвристического переноса строк и autosizing.
-        /// </param>
-        /// <param name="fontColor">
-        /// Цвет шрифта. Если <c>null</c>, атрибут <c>fill</c> у текста не меняется
-        /// (сохраняется цвет из шаблона или наследуется от родителя).
-        /// </param>
-        /// <returns>Тот же экземпляр <paramref name="processor"/> для продолжения цепочки.</returns>
-        /// <exception cref="ArgumentNullException">
-        /// <paramref name="processor"/> равен <c>null</c>.
-        /// </exception>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="fieldId"/> не задан, элемент с таким id не найден,
-        /// размер шрифта не положителен либо <paramref name="maxRowsIncrement"/>
-        /// отрицателен.
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">
-        /// Экземпляр уже освобождён.
-        /// </exception>
-        /// <example>
-        /// <code>
-        /// SvgTemplateProcessor
-        ///     .FromFile("template.svg")
-        ///     .WithAutoFontSizingText("field_rect", "Очень длинный текст…",
-        ///                             fontSize: 16, maxRowsIncrement: 2)
-        ///     .SaveTo("output.svg");
-        /// </code>
-        /// </example>
         public static SvgTemplateProcessor WithAutoFontSizingText(
             this SvgTemplateProcessor processor,
             string fieldId,
@@ -341,53 +159,10 @@ namespace SVGQoLClass
                 maxRowsIncrement, padding, charWidthFactor, fontColor);
             return processor;
         }
+
         /// <summary>
-        /// Пакетная fluent-обёртка над
-        /// <see cref="SvgTemplateProcessor.SetFieldTextWithAutoFontSizing"/>:
-        /// последовательно применяет перенос строк с подбором шрифта к нескольким
-        /// полям. Удобна, когда поля задаются из словаря (например, из БД или JSON).
+        /// Пакетная fluent-обёртка над <see cref="SvgTemplateProcessor.SetFieldTextWithAutoFontSizing"/>.
         /// </summary>
-        /// <param name="processor">Целевой процессор.</param>
-        /// <param name="fields">Словарь «id поля → текст».</param>
-        /// <param name="fontSize">
-        /// Исходный (максимальный) размер шрифта, применяемый ко всем полям.
-        /// </param>
-        /// <param name="maxRowsIncrement">
-        /// Максимальное количество строк, на которое разрешено увеличить высоту
-        /// каждого прямоугольника.
-        /// </param>
-        /// <param name="padding">Внутренний отступ от краёв прямоугольников.</param>
-        /// <param name="charWidthFactor">
-        /// Приблизительная ширина одного символа относительно размера шрифта.
-        /// </param>
-        /// <param name="fontColor">
-        /// Цвет шрифта. Если <c>null</c>, атрибут <c>fill</c> не меняется.
-        /// </param>
-        /// <returns>Тот же экземпляр <paramref name="processor"/> для продолжения цепочки.</returns>
-        /// <exception cref="ArgumentNullException">
-        /// <paramref name="processor"/> или <paramref name="fields"/> равны <c>null</c>.
-        /// </exception>
-        /// <exception cref="ArgumentException">
-        /// Один из id не найден, размер шрифта не положителен либо
-        /// <paramref name="maxRowsIncrement"/> отрицателен.
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">
-        /// Экземпляр уже освобождён.
-        /// </exception>
-        /// <example>
-        /// <code>
-        /// var data = new Dictionary&lt;string, string&gt;
-        /// {
-        ///     ["field_fio"]  = "Иван Петров",
-        ///     ["field_addr"] = "г. Москва, ул. Ленина, д. 1, кв. 42",
-        /// };
-        ///
-        /// SvgTemplateProcessor
-        ///     .FromFile("template.svg")
-        ///     .WithAutoFontSizingFields(data, fontSize: 14, maxRowsIncrement: 2)
-        ///     .SavePdfTo("output.pdf", SKColors.White);
-        /// </code>
-        /// </example>
         public static SvgTemplateProcessor WithAutoFontSizingFields(
             this SvgTemplateProcessor processor,
             IDictionary<string, string> fields,

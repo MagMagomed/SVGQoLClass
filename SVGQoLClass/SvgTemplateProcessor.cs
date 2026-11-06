@@ -10,76 +10,25 @@ using System.Xml;
 namespace SVGQoLClass
 {
     /// <summary>
-    /// Предоставляет высокоуровневый API для работы с SVG-шаблонами:
-    /// загрузку из файла, потока, строки или готового <see cref="SvgDocument"/>,
-    /// редактирование текстовых полей и их геометрии, сохранение в SVG
-    /// и экспорт в PDF.
+    /// Высокоуровневый API для работы с SVG-шаблонами: загрузка, редактирование
+    /// текстовых полей, сохранение в SVG и экспорт в PDF.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// Экземпляр класса создаётся исключительно через фабричные методы
-    /// (<see cref="FromFile(string)"/>, <see cref="FromStream(Stream)"/>,
-    /// <see cref="FromString(string)"/>, <see cref="FromDocument(SvgDocument)"/>),
-    /// что гарантирует наличие корректно загруженного документа на момент
-    /// использования. Конструктор объявлен <c>private</c>.
-    /// </para>
-    /// <para>
-    /// Класс реализует <see cref="IDisposable"/>: после вызова <see cref="Dispose"/>
-    /// любые операции с экземпляром приводят к <see cref="ObjectDisposedException"/>.
-    /// Используйте <c>using</c> для автоматического освобождения ресурсов.
-    /// </para>
-    /// <para>
-    /// Внутренняя реализация опирается на сборку <c>Svg.Custom</c>
-    /// (поставляется вместе с <c>Svg.Skia</c>) для работы с DOM и на
-    /// <see cref="SKSvg"/> для рендеринга в PDF.
-    /// </para>
-    /// <para>
-    /// Помимо сохранения на диск (<see cref="SaveSvg(string)"/>,
-    /// <see cref="ConvertToPdf(string, SKColor?)"/>), класс умеет возвращать
-    /// результат в память — <see cref="GetByteArray"/> для SVG и
-    /// <see cref="GetByteArrayAsPdf"/> для PDF. Это удобно для передачи
-    /// данных по сети или сохранения в БД без промежуточных файлов.
-    /// </para>
+    /// Создаётся только через фабричные методы. Реализует <see cref="IDisposable"/>.
     /// </remarks>
-    /// <example>
-    /// Пример fluent-использования через методы расширения
-    /// (<see cref="SvgTemplateProcessorExtensions"/>):
-    /// <code>
-    /// using (SvgTemplateProcessor
-    ///     .FromFile("template.svg")
-    ///     .WithFieldText("field_name", "Иван Петров")
-    ///     .WithFittedText("field_rect", "Иван Петров")
-    ///     .SaveTo("output.svg")
-    ///     .SavePdfTo("output.pdf", SKColors.White))
-    /// {
-    ///     // работа завершена
-    /// }
-    /// </code>
-    /// </example>
     public sealed class SvgTemplateProcessor : IDisposable
     {
         #region ПОЛЯ
         /// <summary>
-        /// Нижележащий SVG-документ. Устанавливается в <c>null</c> после
-        /// <see cref="Dispose"/> как маркер освобождённого состояния.
+        /// Нижележащий SVG-документ. <c>null</c> после <see cref="Dispose"/>.
         /// </summary>
         private SvgDocument _document;
         #endregion
         #region СВОЙСТВА
         /// <summary>
-        /// Возвращает нижележащий <see cref="SvgDocument"/> для нестандартных
-        /// сценариев, не покрытых публичным API.
+        /// Нижележащий <see cref="SvgDocument"/> для нестандартных сценариев.
         /// </summary>
-        /// <value>Корректный SVG-документ, загруженный при создании экземпляра.</value>
-        /// <exception cref="ObjectDisposedException">
-        /// Экземпляр уже освобождён вызовом <see cref="Dispose"/>.
-        /// </exception>
-        /// <remarks>
-        /// Возвращаемая ссылка позволяет напрямую манипулировать DOM
-        /// (<see cref="SvgElement"/> и его наследники). Учтите, что такие изменения
-        /// не проходят через валидацию, выполняемую методами
-        /// <see cref="SetFieldText"/> и <see cref="SetFieldSize"/>.
-        /// </remarks>
+        /// <exception cref="ObjectDisposedException">Экземпляр освобождён.</exception>
         public SvgDocument Document
         {
             get
@@ -91,28 +40,16 @@ namespace SVGQoLClass
         #endregion
 
         /// <summary>
-        /// Инициализирует новый экземпляр <see cref="SvgTemplateProcessor"/>
-        /// с уже загруженным SVG-документом.
+        /// Инициализирует экземпляр с уже загруженным SVG-документом.
         /// </summary>
-        /// <param name="document">Корректно разобранный SVG-документ.</param>
         private SvgTemplateProcessor(SvgDocument document)
         {
             _document = document;
         }
+
         /// <summary>
-        /// Освобождает ресурсы, удерживаемые процессором, и обнуляет
-        /// внутреннюю ссылку на <see cref="SvgDocument"/>.
+        /// Освобождает ресурсы и обнуляет ссылку на документ. Идемпотентен.
         /// </summary>
-        /// <remarks>
-        /// <para>
-        /// После вызова этого метода любые операции с экземпляром
-        /// (включая чтение свойства <see cref="Document"/>) приводят
-        /// к <see cref="ObjectDisposedException"/>.
-        /// </para>
-        /// <para>
-        /// Метод идемпотентен: повторный вызов не генерирует исключений.
-        /// </para>
-        /// </remarks>
         public void Dispose()
         {
             _document = null;
@@ -120,23 +57,11 @@ namespace SVGQoLClass
         #region ФВБРИЧНЫЕ МЕТОДЫ
 
         /// <summary>
-        /// Создаёт экземпляр <see cref="SvgTemplateProcessor"/>, загружая SVG-документ
-        /// из файла по указанному пути.
+        /// Загружает SVG-документ из файла.
         /// </summary>
         /// <param name="path">Путь к существующему SVG-файлу.</param>
-        /// <returns>Новый экземпляр <see cref="SvgTemplateProcessor"/> с загруженным документом.</returns>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="path"/> равен <c>null</c>, пустой строке или строке из пробелов.
-        /// </exception>
-        /// <exception cref="FileNotFoundException">
-        /// Файл по пути <paramref name="path"/> не существует.
-        /// </exception>
-        /// <remarks>
-        /// Метод использует <see cref="SvgDocument.Open(string)"/> из сборки
-        /// <c>Svg.Custom</c>. Если файл повреждён или не является корректным SVG,
-        /// исключение будет сгенерировано на этапе парсинга внутри
-        /// <see cref="SvgDocument.Open(string)"/>.
-        /// </remarks>
+        /// <exception cref="ArgumentException">Путь не задан.</exception>
+        /// <exception cref="FileNotFoundException">Файл не найден.</exception>
         public static SvgTemplateProcessor FromFile(string path)
         {
             if (string.IsNullOrWhiteSpace(path))
@@ -148,30 +73,10 @@ namespace SVGQoLClass
         }
 
         /// <summary>
-        /// Создаёт экземпляр <see cref="SvgTemplateProcessor"/>, читая SVG-содержимое
-        /// из потока.
+        /// Загружает SVG-документ из потока (UTF-8). Поток не закрывается.
         /// </summary>
-        /// <param name="stream">Поток с SVG-содержимым в кодировке UTF-8.</param>
-        /// <returns>Новый экземпляр <see cref="SvgTemplateProcessor"/>.</returns>
-        /// <exception cref="ArgumentNullException">
-        /// <paramref name="stream"/> равен <c>null</c>.
-        /// </exception>
-        /// <exception cref="InvalidOperationException">
-        /// Не удалось разобрать содержимое потока как SVG-документ.
-        /// </exception>
-        /// <remarks>
-        /// <para>
-        /// Метод читает поток полностью в строку (с автоопределением BOM)
-        /// и передаёт её в <see cref="SvgDocument.FromSvg{T}(string)"/>.
-        /// Поскольку вендорная сборка <c>Svg.Custom</c> не предоставляет
-        /// перегрузку <c>Open(Stream)</c>, парсинг выполняется через строку.
-        /// </para>
-        /// <para>
-        /// Исходный поток <b>не закрывается</b> после чтения
-        /// (<c>leaveOpen: true</c>); вызывающий код обязан освободить его
-        /// самостоятельно.
-        /// </para>
-        /// </remarks>
+        /// <exception cref="ArgumentNullException">Поток равен <c>null</c>.</exception>
+        /// <exception cref="InvalidOperationException">Не удалось разобрать SVG.</exception>
         public static SvgTemplateProcessor FromStream(Stream stream)
         {
             if (stream == null) throw new ArgumentNullException(nameof(stream));
@@ -190,22 +95,10 @@ namespace SVGQoLClass
         }
 
         /// <summary>
-        /// Создаёт экземпляр <see cref="SvgTemplateProcessor"/> из строки,
-        /// содержащей SVG-разметку.
+        /// Загружает SVG-документ из строки с разметкой.
         /// </summary>
-        /// <param name="svgContent">Строка с XML-содержимым SVG-документа.</param>
-        /// <returns>Новый экземпляр <see cref="SvgTemplateProcessor"/>.</returns>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="svgContent"/> равен <c>null</c>, пустой строке или строке из пробелов.
-        /// </exception>
-        /// <exception cref="InvalidOperationException">
-        /// Не удалось разобрать переданную строку как SVG-документ.
-        /// </exception>
-        /// <remarks>
-        /// Внутри создаётся <see cref="MemoryStream"/> с UTF-8-представлением строки,
-        /// который затем передаётся в <see cref="FromStream(Stream)"/>.
-        /// Это удобный способ загрузки шаблона из ресурсов, БД или сетевого ответа.
-        /// </remarks>
+        /// <exception cref="ArgumentException">Строка пуста или <c>null</c>.</exception>
+        /// <exception cref="InvalidOperationException">Не удалось разобрать SVG.</exception>
         public static SvgTemplateProcessor FromString(string svgContent)
         {
             if (string.IsNullOrWhiteSpace(svgContent))
@@ -218,20 +111,9 @@ namespace SVGQoLClass
         }
 
         /// <summary>
-        /// Создаёт экземпляр <see cref="SvgTemplateProcessor"/> поверх
-        /// уже готового <see cref="SvgDocument"/>.
+        /// Создаёт экземпляр поверх готового <see cref="SvgDocument"/>.
         /// </summary>
-        /// <param name="document">Экземпляр SVG-документа.</param>
-        /// <returns>Новый экземпляр <see cref="SvgTemplateProcessor"/>.</returns>
-        /// <exception cref="ArgumentNullException">
-        /// <paramref name="document"/> равен <c>null</c>.
-        /// </exception>
-        /// <remarks>
-        /// Ответственность за владение документом переходит к процессору:
-        /// после <see cref="Dispose"/> ссылка внутри процессора обнуляется.
-        /// Используйте этот метод, если документ уже загружен другим способом
-        /// (например, через <c>SKSvg.SourceDocument</c>).
-        /// </remarks>
+        /// <exception cref="ArgumentNullException">Документ равен <c>null</c>.</exception>
         public static SvgTemplateProcessor FromDocument(SvgDocument document)
         {
             if (document == null) throw new ArgumentNullException(nameof(document));
@@ -240,29 +122,10 @@ namespace SVGQoLClass
         #endregion
         #region ОПЕРАЦИИ
         /// <summary>
-        /// Устанавливает новый текст для поля с указанным идентификатором.
+        /// Устанавливает текст для поля с указанным id.
         /// </summary>
-        /// <param name="fieldId">
-        /// Значение атрибута <c>id</c> целевого элемента в SVG-документе.
-        /// </param>
-        /// <param name="text">
-        /// Новое текстовое содержимое. Может быть пустой строкой или <c>null</c>
-        /// (в этом случае текст поля очищается).
-        /// </param>
-        /// <exception cref="ObjectDisposedException">
-        /// Экземпляр уже освобождён.
-        /// </exception>
-        /// <exception cref="ArgumentException">
-        /// Элемент с указанным <paramref name="fieldId"/> не найден,
-        /// либо найденный элемент не является <see cref="SvgText"/>
-        /// (например, это <see cref="SvgRectangle"/>).
-        /// </exception>
-        /// <remarks>
-        /// Метод работает только с элементами <see cref="SvgText"/>.
-        /// Если текст в шаблоне вложен в <c>&lt;tspan&gt;</c>, идентификатор
-        /// следует присвоить самому элементу <c>&lt;tspan&gt;</c> и работать
-        /// с ним как с самостоятельным полем.
-        /// </remarks>
+        /// <exception cref="ObjectDisposedException">Экземпляр освобождён.</exception>
+        /// <exception cref="ArgumentException">Элемент не найден или не является <see cref="SvgText"/>.</exception>
         public void SetFieldText(string fieldId, string text)
         {
             EnsureNotDisposed();
@@ -275,35 +138,12 @@ namespace SVGQoLClass
         }
 
         /// <summary>
-        /// Изменяет ширину и высоту поля с указанным идентификатором.
+        /// Изменяет размеры поля. Для <see cref="SvgRectangle"/> — width/height,
+        /// для <see cref="SvgText"/> — textLength (height игнорируется).
         /// </summary>
-        /// <param name="fieldId">
-        /// Значение атрибута <c>id</c> целевого элемента.
-        /// </param>
-        /// <param name="width">Новая ширина в единицах пользователя SVG (px).</param>
-        /// <param name="height">Новая высота в единицах пользователя SVG (px).</param>
-        /// <exception cref="ObjectDisposedException">
-        /// Экземпляр уже освобождён.
-        /// </exception>
-        /// <exception cref="ArgumentException">
-        /// Элемент с указанным <paramref name="fieldId"/> не найден.
-        /// </exception>
-        /// <exception cref="NotSupportedException">
-        /// Тип найденного элемента не поддерживается методом
-        /// (поддерживаются только <see cref="SvgRectangle"/> и <see cref="SvgText"/>).
-        /// </exception>
-        /// <remarks>
-        /// <para>
-        /// Для <see cref="SvgRectangle"/> напрямую меняются атрибуты
-        /// <c>width</c> и <c>height</c>.
-        /// </para>
-        /// <para>
-        /// Для <see cref="SvgText"/> параметр <paramref name="height"/>
-        /// игнорируется; параметр <paramref name="width"/> записывается
-        /// в атрибут <c>textLength</c>, который растягивает или сжимает текст
-        /// по оси X. Если <paramref name="width"/> ≤ 0, атрибут не изменяется.
-        /// </para>
-        /// </remarks>
+        /// <exception cref="ObjectDisposedException">Экземпляр освобождён.</exception>
+        /// <exception cref="ArgumentException">Элемент не найден.</exception>
+        /// <exception cref="NotSupportedException">Тип элемента не поддерживается.</exception>
         public void SetFieldSize(string fieldId, float width, float height)
         {
             EnsureNotDisposed();
@@ -328,39 +168,11 @@ namespace SVGQoLClass
         }
 
         /// <summary>
-        /// Подбирает размеры поля эвристически, исходя из длины текста.
+        /// Эвристически подбирает размеры поля под длину текста.
         /// </summary>
-        /// <param name="fieldId">Значение атрибута <c>id</c> целевого элемента.</param>
-        /// <param name="text">Текст, под который подгоняется размер.</param>
-        /// <param name="charWidth">
-        /// Средняя ширина одного символа в единицах SVG. Значение по умолчанию — 10.
-        /// Зависит от используемого шрифта и его размера.
-        /// </param>
-        /// <param name="padding">
-        /// Отступы по краям поля в единицах SVG. Значение по умолчанию — 4.
-        /// </param>
-        /// <exception cref="ObjectDisposedException">
-        /// Экземпляр уже освобождён.
-        /// </exception>
-        /// <exception cref="ArgumentException">
-        /// Элемент с указанным <paramref name="fieldId"/> не найден.
-        /// </exception>
-        /// <exception cref="NotSupportedException">
-        /// Тип элемента не поддерживается <see cref="SetFieldSize"/>.
-        /// </exception>
-        /// <remarks>
-        /// <para>
-        /// Если <paramref name="text"/> равен <c>null</c> или пустой строке,
-        /// метод ничего не делает — размеры поля остаются прежними.
-        /// </para>
-        /// <para>
-        /// Расчёт выполняется по формулам:
-        /// <c>width = text.Length * charWidth + 2 * padding</c>;
-        /// <c>height = charWidth * 1.5 + 2 * padding</c>.
-        /// Это упрощённая модель; для точного расчёта рекомендуется
-        /// измерять текст через <c>SKFont.MeasureText</c>.
-        /// </para>
-        /// </remarks>
+        /// <exception cref="ObjectDisposedException">Экземпляр освобождён.</exception>
+        /// <exception cref="ArgumentException">Элемент не найден.</exception>
+        /// <exception cref="NotSupportedException">Тип элемента не поддерживается.</exception>
         public void FitFieldToText(string fieldId, string text,
             float charWidth = 10f, float padding = 4f)
         {
@@ -371,22 +183,11 @@ namespace SVGQoLClass
         }
 
         /// <summary>
-        /// Сохраняет текущее состояние SVG-документа в файл.
+        /// Сохраняет текущее состояние SVG в файл.
         /// </summary>
-        /// <param name="outputPath">Путь к результирующему SVG-файлу.</param>
-        /// <exception cref="ObjectDisposedException">
-        /// Экземпляр уже освобождён.
-        /// </exception>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="outputPath"/> равен <c>null</c>, пустой строке
-        /// или строке из пробелов.
-        /// </exception>
-        /// <exception cref="IOException">
-        /// Не удалось создать или записать файл.
-        /// </exception>
-        /// <remarks>
-        /// Эквивалентен <c>File.WriteAllBytes(outputPath, GetByteArray())</c>.
-        /// </remarks>
+        /// <exception cref="ObjectDisposedException">Экземпляр освобождён.</exception>
+        /// <exception cref="ArgumentException">Путь не задан.</exception>
+        /// <exception cref="IOException">Ошибка записи файла.</exception>
         public void SaveSvg(string outputPath)
         {
             EnsureNotDisposed();
@@ -397,38 +198,12 @@ namespace SVGQoLClass
         }
 
         /// <summary>
-        /// Конвертирует текущее состояние SVG-документа в PDF-файл.
+        /// Конвертирует SVG в PDF-файл.
         /// </summary>
-        /// <param name="outputPath">Путь к результирующему PDF-файлу.</param>
-        /// <param name="backgroundColor">
-        /// Цвет фона страницы PDF. Если <c>null</c>, используется прозрачный фон
-        /// (<see cref="SKColors.Transparent"/>).
-        /// </param>
-        /// <exception cref="ObjectDisposedException">
-        /// Экземпляр уже освобождён.
-        /// </exception>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="outputPath"/> равен <c>null</c>, пустой строке
-        /// или строке из пробелов.
-        /// </exception>
-        /// <exception cref="InvalidOperationException">
-        /// <see cref="SKSvg"/> не смог загрузить сериализованный SVG
-        /// (например, из-за ошибок в документе или отсутствия нативных
-        /// библиотек SkiaSharp/HarfBuzzSharp).
-        /// </exception>
-        /// <remarks>
-        /// <para>
-        /// Метод сначала сохраняет текущий документ во временный SVG-файл,
-        /// затем загружает его через <see cref="SKSvg"/> и рендерит в PDF
-        /// с масштабом 1:1. Временный файл удаляется в блоке <c>finally</c>.
-        /// </para>
-        /// <para>
-        /// Для успешной работы требуются нативные библиотеки
-        /// <c>libSkiaSharp</c> и <c>libHarfBuzzSharp</c>, доступные
-        /// в выходной папке приложения (см. проблему <c>DllNotFoundException</c>
-        /// для <c>libHarfBuzzSharp</c> в .NET Framework).
-        /// </para>
-        /// </remarks>
+        /// <param name="backgroundColor">Цвет фона; по умолчанию прозрачный.</param>
+        /// <exception cref="ObjectDisposedException">Экземпляр освобождён.</exception>
+        /// <exception cref="ArgumentException">Путь не задан.</exception>
+        /// <exception cref="InvalidOperationException">Ошибка загрузки в <see cref="SKSvg"/>.</exception>
         public void ConvertToPdf(string outputPath, SKColor? backgroundColor = null)
         {
             EnsureNotDisposed();
@@ -457,37 +232,18 @@ namespace SVGQoLClass
         }
 
         /// <summary>
-        /// Проверяет, что экземпляр не был освобождён.
+        /// Проверяет, что экземпляр не освобождён.
         /// </summary>
-        /// <exception cref="ObjectDisposedException">
-        /// <see cref="_document"/> равен <c>null</c>, что означает,
-        /// что был вызван <see cref="Dispose"/>.
-        /// </exception>
         private void EnsureNotDisposed()
         {
             if (_document == null)
                 throw new ObjectDisposedException(nameof(SvgTemplateProcessor));
         }
+
         /// <summary>
-        /// Возвращает текущее состояние SVG-документа в виде массива байт
-        /// (UTF-8 без BOM, с XML-объявлением и отступами).
+        /// Возвращает текущий SVG в виде массива байт (UTF-8 без BOM, с отступами).
         /// </summary>
-        /// <returns>Массив байт с сериализованным SVG-документом.</returns>
-        /// <exception cref="ObjectDisposedException">
-        /// Экземпляр уже освобождён вызовом <see cref="Dispose"/>.
-        /// </exception>
-        /// <remarks>
-        /// <para>
-        /// Метод не пишет ничего на диск — результат полностью формируется в памяти,
-        /// что удобно для передачи SVG по сети, сохранения в БД или передачи в
-        /// другой API (например, в контроллер ASP.NET).
-        /// </para>
-        /// <para>
-        /// Формат идентичен тому, что записывает <see cref="SaveSvg(string)"/>:
-        /// <c>File.WriteAllBytes(path, GetByteArray())</c> даёт тот же файл, что
-        /// и <c>SaveSvg(path)</c>.
-        /// </para>
-        /// </remarks>
+        /// <exception cref="ObjectDisposedException">Экземпляр освобождён.</exception>
         public byte[] GetByteArray()
         {
             EnsureNotDisposed();
@@ -513,36 +269,11 @@ namespace SVGQoLClass
         }
 
         /// <summary>
-        /// Рендерит текущее состояние SVG-документа в PDF и возвращает
-        /// результат в виде массива байт.
+        /// Рендерит текущий SVG в PDF и возвращает массив байт.
         /// </summary>
-        /// <param name="backgroundColor">
-        /// Цвет фона страницы PDF. Если <c>null</c>, используется прозрачный фон
-        /// (<see cref="SKColors.Transparent"/>).
-        /// </param>
-        /// <returns>Массив байт с PDF-документом.</returns>
-        /// <exception cref="ObjectDisposedException">
-        /// Экземпляр уже освобождён вызовом <see cref="Dispose"/>.
-        /// </exception>
-        /// <exception cref="InvalidOperationException">
-        /// <see cref="SKSvg"/> не смог загрузить сериализованный SVG
-        /// (например, из-за ошибок в документе или отсутствия нативных
-        /// библиотек SkiaSharp/HarfBuzzSharp).
-        /// </exception>
-        /// <remarks>
-        /// <para>
-        /// Метод не пишет ничего на диск: SVG сериализуется во временный файл
-        /// (требование <see cref="SKSvg.Load(string)"/>), рендерится через
-        /// <see cref="SKPicture.ToPdf(Stream, SKColor, float, float)"/>
-        /// в <see cref="MemoryStream"/>, после чего временный файл удаляется
-        /// в блоке <c>finally</c>.
-        /// </para>
-        /// <para>
-        /// Для успешной работы, как и для <see cref="ConvertToPdf(string, SKColor?)"/>,
-        /// требуются нативные библиотеки <c>libSkiaSharp</c> и <c>libHarfBuzzSharp</c>,
-        /// доступные в выходной папке приложения.
-        /// </para>
-        /// </remarks>
+        /// <param name="backgroundColor">Цвет фона; по умолчанию прозрачный.</param>
+        /// <exception cref="ObjectDisposedException">Экземпляр освобождён.</exception>
+        /// <exception cref="InvalidOperationException">Ошибка загрузки в <see cref="SKSvg"/>.</exception>
         public byte[] GetByteArrayAsPdf(SKColor? backgroundColor = null)
         {
             EnsureNotDisposed();
@@ -572,24 +303,12 @@ namespace SVGQoLClass
                 }
             }
         }
+
         /// <summary>
-        /// Устанавливает текст в поле с автоматическим переносом строк.
-        /// Сначала ищет <see cref="SvgText"/> по id. Если текст не найден,
-        /// ищет <see cref="SvgRectangle"/> с тем же id, создаёт поверх него
-        /// <see cref="SvgText"/> и при необходимости увеличивает высоту
-        /// прямоугольника.
+        /// Устанавливает текст с автоматическим переносом строк.
+        /// Ищет <see cref="SvgText"/> по id, либо <see cref="SvgRectangle"/> с тем же id
+        /// (тогда создаётся <see cref="SvgText"/> и при необходимости увеличивается высота прямоугольника).
         /// </summary>
-        /// <param name="fieldId">id текстового поля или прямоугольника.</param>
-        /// <param name="text">Текст для вставки.</param>
-        /// <param name="fontSize">Размер шрифта в единицах SVG.</param>
-        /// <param name="padding">Внутренний отступ от краёв прямоугольника.</param>
-        /// <param name="charWidthFactor">
-        /// Приблизительная ширина одного символа относительно размера шрифта.
-        /// </param>
-        /// <param name="fontColor">
-        /// Цвет шрифта. Если <c>null</c>, атрибут <c>fill</c> у текста не меняется
-        /// (сохраняется цвет из шаблона или наследуется от родителя).
-        /// </param>
         public void SetFieldTextWithAutoWrap(
             string fieldId,
             string text,
@@ -615,53 +334,12 @@ namespace SVGQoLClass
             ApplyLinesToText(textElement, lines, left, top, fontSize, lineHeight, fontColor);
             EnsureRectHeightForLines(rect, lines.Count, lineHeight, padding);
         }
+
         /// <summary>
-        /// Устанавливает текст в поле с автоматическим переносом строк
-        /// и подбором размера шрифта.
-        /// Сначала ищет <see cref="SvgText"/> по id. Если текст не найден,
-        /// ищет <see cref="SvgRectangle"/> с тем же id, создаёт поверх него
-        /// <see cref="SvgText"/> и при необходимости увеличивает высоту
-        /// прямоугольника на заданное количество строк. Если новых строк
-        /// недостаточно — уменьшает размер шрифта до тех пор, пока текст
-        /// не будет полностью вписан в прямоугольник.
+        /// Устанавливает текст с автопереносом и подбором размера шрифта,
+        /// чтобы уложиться в прямоугольник (с возможностью увеличить его
+        /// не более чем на <paramref name="maxRowsIncrement"/> строк).
         /// </summary>
-        /// <param name="fieldId">id текстового поля или прямоугольника.</param>
-        /// <param name="text">Текст для вставки.</param>
-        /// <param name="fontSize">
-        /// Исходный (максимальный) размер шрифта в единицах SVG.
-        /// При нехватке места он будет уменьшаться.
-        /// </param>
-        /// <param name="maxRowsIncrement">
-        /// Максимальное количество строк, на которое разрешено увеличить
-        /// высоту прямоугольника. Строки считаются в размерности
-        /// исходного <paramref name="fontSize"/>.
-        /// </param>
-        /// <param name="padding">Внутренний отступ от краёв прямоугольника.</param>
-        /// <param name="charWidthFactor">
-        /// Приблизительная ширина одного символа относительно размера шрифта.
-        /// </param>
-        /// <param name="fontColor">
-        /// Цвет шрифта. Если <c>null</c>, атрибут <c>fill</c> у текста не меняется
-        /// (сохраняется цвет из шаблона или наследуется от родителя).
-        /// </param>
-        /// <remarks>
-        /// <para>
-        /// Алгоритм:
-        /// <list type="number">
-        /// <item>Пересчитывается «бюджет» высоты прямоугольника:
-        /// <c>rect.Height + maxRowsIncrement * lineHeight(initialFontSize)</c>.</item>
-        /// <item>Пока текст при текущем размере шрифта не укладывается в этот
-        /// бюджет, размер шрифта уменьшается с шагом 0.5 до нижней границы 1.</item>
-        /// <item>Итоговая высота прямоугольника увеличивается ровно настолько,
-        /// насколько требуется (но не более бюджета).</item>
-        /// </list>
-        /// </para>
-        /// <para>
-        /// Если прямоугольник не найден (есть только <see cref="SvgText"/>),
-        /// autosizing невозможен — текст записывается как есть с исходным
-        /// <paramref name="fontSize"/>.
-        /// </para>
-        /// </remarks>
         public void SetFieldTextWithAutoFontSizing(
             string fieldId,
             string text,
@@ -693,7 +371,6 @@ namespace SVGQoLClass
             }
             else
             {
-                // Нет прямоугольника — не к чему подгонять, используем исходный размер.
                 finalFontSize = fontSize;
                 finalLineHeight = fontSize * 1.2f;
                 finalLines = WrapText(text, 0f, finalFontSize * charWidthFactor);
@@ -728,8 +405,7 @@ namespace SVGQoLClass
         }
 
         /// <summary>
-        /// Эвристически разбивает текст на строки по ширине.
-        /// Длинные слова при необходимости разрезаются посимвольно.
+        /// Эвристически разбивает текст на строки по ширине; длинные слова режутся посимвольно.
         /// </summary>
         private static List<string> WrapText(string text, float maxWidth, float charWidth)
         {
@@ -826,10 +502,8 @@ namespace SVGQoLClass
         }
 
         /// <summary>
-        /// Ищет <see cref="SvgText"/> по <paramref name="fieldId"/>
-        /// (или <c>fieldId + "_text"</c>) и <see cref="SvgRectangle"/>
-        /// с тем же <paramref name="fieldId"/>. Бросает исключение,
-        /// если не найден ни один из них.
+        /// Ищет <see cref="SvgText"/> по id (или <c>id + "_text"</c>) и <see cref="SvgRectangle"/>
+        /// по тому же id. Бросает исключение, если ничего не найдено.
         /// </summary>
         private void ResolveFieldElements(
             string fieldId,
@@ -847,10 +521,7 @@ namespace SVGQoLClass
         }
 
         /// <summary>
-        /// Вычисляет прямоугольную область размещения текста:
-        /// левый край, верхнюю границу (top-left, не baseline) и
-        /// максимальную ширину строки. Если прямоугольник не задан,
-        /// координаты берутся из существующего <see cref="SvgText"/>.
+        /// Вычисляет область размещения текста (left, top, maxWidth).
         /// </summary>
         private static void ComputeLayoutArea(
             SvgRectangle rect,
@@ -877,14 +548,13 @@ namespace SVGQoLClass
                 : fontSize;
 
             left = existingX;
-            top = existingBaselineY - fontSize;   // переводим baseline в top-left
+            top = existingBaselineY - fontSize;
             maxWidth = 0f;
         }
 
         /// <summary>
-        /// Возвращает существующий <see cref="SvgText"/> либо создаёт новый
-        /// (с id <c>fieldId + "_text"</c>) и добавляет его в DOM —
-        /// внутрь родителя прямоугольника или в корень документа.
+        /// Возвращает существующий <see cref="SvgText"/> либо создаёт новый (id = <c>fieldId + "_text"</c>)
+        /// и добавляет его в DOM.
         /// </summary>
         private SvgText EnsureTextElement(
             SvgText textElement,
@@ -916,9 +586,8 @@ namespace SVGQoLClass
         }
 
         /// <summary>
-        /// Очищает <see cref="SvgText"/> и записывает в него строки
-        /// в виде <c>&lt;tspan&gt;</c> с правильным позиционированием,
-        /// размером шрифта и (опционально) цветом заливки.
+        /// Очищает <see cref="SvgText"/> и записывает строки в виде <c>&lt;tspan&gt;</c>
+        /// с позиционированием, размером шрифта и опциональным цветом.
         /// </summary>
         private static void ApplyLinesToText(
             SvgText textElement,
@@ -977,9 +646,8 @@ namespace SVGQoLClass
         }
 
         /// <summary>
-        /// Увеличивает высоту прямоугольника (если нужно) так,
-        /// чтобы все строки поместились. Уменьшать высоту не умеет —
-        /// это соответствует исходному поведению.
+        /// Увеличивает высоту прямоугольника (если нужно), чтобы поместились все строки.
+        /// Уменьшать высоту не умеет.
         /// </summary>
         private static void EnsureRectHeightForLines(
             SvgRectangle rect,
@@ -996,17 +664,10 @@ namespace SVGQoLClass
         }
 
         /// <summary>
-        /// Подбирает минимальный (в пределах шага 0.5) размер шрифта,
-        /// при котором текст укладывается в прямоугольник, увеличенный
-        /// не более чем на <paramref name="maxRowsIncrement"/> строк.
+        /// Подбирает минимальный (шаг 0.5) размер шрифта, при котором текст
+        /// укладывается в прямоугольник, увеличенный не более чем на
+        /// <paramref name="maxRowsIncrement"/> строк.
         /// </summary>
-        /// <param name="initialFontSize">
-        /// Исходный (максимальный) размер шрифта. Именно от него
-        /// отсчитывается лимит по высоте.
-        /// </param>
-        /// <param name="lines">Итоговые строки на возвращённом размере шрифта.</param>
-        /// <param name="lineHeight">Межстрочный интервал на возвращённом размере.</param>
-        /// <returns>Размер шрифта, при котором текст помещается.</returns>
         private static float FitFontSizeToRect(
             string text,
             SvgRectangle rect,
