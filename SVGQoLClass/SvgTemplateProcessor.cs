@@ -54,7 +54,7 @@ namespace SVGQoLClass
         {
             _document = null;
         }
-        #region ФВБРИЧНЫЕ МЕТОДЫ
+        #region ФАБРИЧНЫЕ МЕТОДЫ
 
         /// <summary>
         /// Загружает SVG-документ из файла.
