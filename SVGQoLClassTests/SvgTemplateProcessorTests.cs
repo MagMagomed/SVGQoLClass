@@ -1,5 +1,6 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
 using SkiaSharp;
+using Svg;
 using SVGQoLClass;
 using System;
 using System.Collections.Generic;
@@ -16,13 +17,17 @@ namespace SVGQoLClass.Tests
         private string _testDir;
         private string _templatePath;
 
-        // Простой шаблон: один <rect> и два <text> с id
+        // Простой шаблон: <rect> и <text> с id.
+        // small_rect — для тестов autosize (маленький, чтобы шрифт приходилось уменьшать).
+        // suffix_text — для проверки поиска SvgText по id + "_text".
         private const string TestSvg =
 @"<?xml version=""1.0"" encoding=""utf-8""?>
 <svg xmlns=""http://www.w3.org/2000/svg"" width=""500"" height=""500"">
   <rect id=""field_rect"" x=""10"" y=""10"" width=""100"" height=""50"" fill=""lightgray""/>
+  <rect id=""small_rect"" x=""150"" y=""10"" width=""80"" height=""40"" fill=""lightgray""/>
   <text id=""field_name"" x=""20"" y=""40"" font-size=""16"">Placeholder</text>
   <text id=""field_date"" x=""20"" y=""70"" font-size=""16"">01.01.2000</text>
+  <text id=""suffix_text"" x=""150"" y=""100"" font-size=""12"">suffix</text>
 </svg>";
 
         [TestInitialize]
@@ -170,6 +175,19 @@ namespace SVGQoLClass.Tests
             }
         }
 
+        [TestMethod()]
+        public void WithFieldText_Null_ClearsField()
+        {
+            using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
+            {
+                processor.WithFieldText("field_name", null);
+                var text = processor.Document.GetElementById<SvgText>("field_name");
+                Assert.IsNotNull(text);
+                Assert.IsTrue(string.IsNullOrEmpty(text.Text),
+                    "Null должен очищать текст поля.");
+            }
+        }
+
         // ==================== SetFieldSize ====================
 
         [TestMethod()]
@@ -227,6 +245,18 @@ namespace SVGQoLClass.Tests
             }
         }
 
+        [TestMethod()]
+        public void SetFieldSize_OnText_ZeroWidth_NoChange()
+        {
+            using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
+            {
+                processor.SetFieldSize("field_name", 0, 30);
+                var text = processor.Document.GetElementById<SvgText>("field_name");
+                Assert.AreEqual(0f, text.TextLength.Value,
+                    "При width <= 0 textLength не должен меняться.");
+            }
+        }
+
         // ==================== FitFieldToText ====================
 
         [TestMethod()]
@@ -260,6 +290,189 @@ namespace SVGQoLClass.Tests
             string content = File.ReadAllText(outPath);
             StringAssert.Contains(content, "width=\"100\"");
             StringAssert.Contains(content, "height=\"50\"");
+        }
+
+        // ==================== SetFieldTextWithAutoWrap ====================
+
+        [TestMethod()]
+        public void WithAutoWrapText_CreatesTextOverRectangle()
+        {
+            using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
+            {
+                processor.WithAutoWrapText("field_rect", "Some text that may wrap",
+                    fontSize: 12f);
+
+                // Над прямоугольником должен появиться SvgText с id = fieldId + "_text".
+                var t = processor.Document.GetElementById<SvgText>("field_rect_text");
+                Assert.IsNotNull(t, "Должен быть создан SvgText с id 'field_rect_text'.");
+                Assert.IsTrue(t.Children.Count > 0, "В тексте должны быть tspan-строки.");
+            }
+        }
+
+        [TestMethod()]
+        public void WithAutoWrapText_UsesExistingTextElement()
+        {
+            using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
+            {
+                processor.WithAutoWrapText("field_date", "Updated", fontSize: 12f);
+
+                var t = processor.Document.GetElementById<SvgText>("field_date");
+                Assert.IsNotNull(t);
+                // Прямоугольника нет → без переноса (одна строка).
+                Assert.AreEqual(1, t.Children.Count);
+                Assert.AreEqual("Updated", ((SvgTextSpan)t.Children[0]).Text);
+            }
+        }
+
+        [TestMethod()]
+        public void WithAutoWrapText_FindsTextByIdWithSuffix()
+        {
+            using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
+            {
+                // Прямоугольника "suffix" нет, есть только текст "suffix_text".
+                processor.WithAutoWrapText("suffix", "Zzz", fontSize: 12f);
+
+                var t = processor.Document.GetElementById<SvgText>("suffix_text");
+                Assert.IsNotNull(t);
+                Assert.AreEqual(1, t.Children.Count);
+                Assert.AreEqual("Zzz", ((SvgTextSpan)t.Children[0]).Text);
+            }
+        }
+
+        [TestMethod()]
+        public void WithAutoWrapText_IncreasesRectangleHeightIfNeeded()
+        {
+            using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
+            {
+                var before = ((SvgRectangle)processor.Document.GetElementById("field_rect")).Height.Value;
+
+                // 5 строк при fontSize=12 (lineHeight=14.4) + padding=4
+                // требуется высота ≈ 8 + 5*14.4 = 80 > исходных 50.
+                processor.WithAutoWrapText("field_rect", "L1\nL2\nL3\nL4\nL5", fontSize: 12f);
+
+                var after = ((SvgRectangle)processor.Document.GetElementById("field_rect")).Height.Value;
+                Assert.IsTrue(after > before,
+                    "Высота прямоугольника должна увеличиться под 5 строк.");
+            }
+        }
+
+        [TestMethod()]
+        [ExpectedException(typeof(ArgumentNullException))]
+        public void WithAutoWrapText_NullProcessor_Throws()
+        {
+            SvgTemplateProcessorExtensions.WithAutoWrapText(null, "field_rect", "text", 12f);
+        }
+
+        // ==================== SetFieldTextWithAutoWrap (batch) ====================
+
+        [TestMethod()]
+        public void WithAutoWrapFields_ProcessesMultipleFields()
+        {
+            using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
+            {
+                processor.WithAutoWrapFields(new Dictionary<string, string>
+                {
+                    { "field_rect", "Line one Line two Line three" },
+                    { "field_date", "Hi" }
+                }, fontSize: 12f);
+
+                Assert.IsNotNull(processor.Document.GetElementById<SvgText>("field_rect_text"));
+                Assert.IsNotNull(processor.Document.GetElementById<SvgText>("field_date"));
+            }
+        }
+
+        [TestMethod()]
+        [ExpectedException(typeof(ArgumentNullException))]
+        public void WithAutoWrapFields_NullDictionary_Throws()
+        {
+            using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
+            {
+                processor.WithAutoWrapFields(null, 12f);
+            }
+        }
+
+        // ==================== SetFieldTextWithAutoFontSizing ====================
+
+        [TestMethod()]
+        public void WithAutoFontSizingText_ShrinksFontToFit()
+        {
+            using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
+            {
+                // small_rect: 80x40. При fontSize=20 одна строка = 24px,
+                // доступно 32px → текст длиннее одной строки не влезет.
+                // maxRowsIncrement=0 запрещает увеличивать высоту → шрифт должен уменьшиться.
+                processor.WithAutoFontSizingText(
+                    "small_rect",
+                    "This text is too long for the small box",
+                    fontSize: 20f, maxRowsIncrement: 0);
+
+                var t = processor.Document.GetElementById<SvgText>("small_rect_text");
+                Assert.IsNotNull(t);
+                Assert.IsTrue(t.FontSize.Value < 20f,
+                    "Размер шрифта должен уменьшиться, чтобы текст поместился.");
+                Assert.IsTrue(t.FontSize.Value >= 1f,
+                    "Размер шрифта не должен опускаться ниже 1.");
+            }
+        }
+
+        [TestMethod()]
+        public void WithAutoFontSizingText_NoRectangle_KeepsOriginalFontSize()
+        {
+            using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
+            {
+                // field_date — SvgText без прямоугольника → autosize невозможен,
+                // размер шрифта должен остаться исходным.
+                processor.WithAutoFontSizingText("field_date", "Hello", fontSize: 14f);
+
+                var t = processor.Document.GetElementById<SvgText>("field_date");
+                Assert.IsNotNull(t);
+                Assert.AreEqual(14f, t.FontSize.Value, 0.001f);
+            }
+        }
+
+        [TestMethod()]
+        [ExpectedException(typeof(ArgumentException))]
+        public void WithAutoFontSizingText_NegativeMaxRows_Throws()
+        {
+            using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
+            {
+                processor.WithAutoFontSizingText("small_rect", "x", 10f, maxRowsIncrement: -1);
+            }
+        }
+
+        [TestMethod()]
+        [ExpectedException(typeof(ArgumentNullException))]
+        public void WithAutoFontSizingText_NullProcessor_Throws()
+        {
+            SvgTemplateProcessorExtensions.WithAutoFontSizingText(null, "small_rect", "x", 10f);
+        }
+
+        // ==================== SetFieldTextWithAutoFontSizing (batch) ====================
+
+        [TestMethod()]
+        public void WithAutoFontSizingFields_ProcessesMultipleFields()
+        {
+            using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
+            {
+                processor.WithAutoFontSizingFields(new Dictionary<string, string>
+                {
+                    { "small_rect", "Some longer text here for autosize" },
+                    { "field_date", "Hi" }
+                }, fontSize: 16f, maxRowsIncrement: 1);
+
+                Assert.IsNotNull(processor.Document.GetElementById<SvgText>("small_rect_text"));
+                Assert.IsNotNull(processor.Document.GetElementById<SvgText>("field_date"));
+            }
+        }
+
+        [TestMethod()]
+        [ExpectedException(typeof(ArgumentNullException))]
+        public void WithAutoFontSizingFields_NullDictionary_Throws()
+        {
+            using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
+            {
+                processor.WithAutoFontSizingFields(null, 12f);
+            }
         }
 
         // ==================== SaveSvg ====================
@@ -891,6 +1104,31 @@ namespace SVGQoLClass.Tests
             StringAssert.Contains(svgContent, "width=\"300\"");
 
             Assert.AreEqual("%PDF-", Encoding.ASCII.GetString(pdfBytes, 0, 5));
+        }
+
+        // ==================== Интеграция: AutoWrap + AutoFontSizing в цепочке ====================
+
+        [TestMethod()]
+        public void FluentChain_WithAutoWrapAndAutoFontSizing_ProducesValidOutputs()
+        {
+            byte[] svgBytes = SvgTemplateProcessor
+                .FromFile(_templatePath)
+                .WithAutoWrapText("field_rect", "Очень длинный текст, который должен перенестись",
+                    fontSize: 12f)
+                .WithAutoFontSizingText("small_rect", "И ещё один длинный текст для маленького бокса",
+                    fontSize: 18f, maxRowsIncrement: 1)
+                .ToByteArray();
+
+            Assert.IsTrue(svgBytes.Length > 0);
+            string svgContent = Encoding.UTF8.GetString(svgBytes);
+
+            StringAssert.Contains(svgContent, "field_rect_text");
+            StringAssert.Contains(svgContent, "small_rect_text");
+
+            // Текст разбит на tspan-ы, поэтому проверяем фрагмент, который
+            // гарантированно остаётся в одном tspan.
+            StringAssert.Contains(svgContent, "Очень длинный");
+            StringAssert.Contains(svgContent, "перенестись");
         }
     }
 }
