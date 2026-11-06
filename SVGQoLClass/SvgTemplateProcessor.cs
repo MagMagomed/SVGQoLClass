@@ -2,6 +2,7 @@
 using Svg;
 using Svg.Skia;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Xml;
@@ -553,6 +554,268 @@ namespace SVGQoLClass
                     try { File.Delete(tempSvgPath); } catch { }
                 }
             }
+        }
+        /// <summary>
+        /// Устанавливает текст в поле с автоматическим переносом строк.
+        /// Сначала ищет <see cref="SvgText"/> по id. Если текст не найден,
+        /// ищет <see cref="SvgRectangle"/> с тем же id, создаёт поверх него
+        /// <see cref="SvgText"/> и при необходимости увеличивает высоту прямоугольника.
+        /// </summary>
+        /// <param name="fieldId">id текстового поля или прямоугольника.</param>
+        /// <param name="text">Текст для вставки.</param>
+        /// <param name="fontSize">Размер шрифта в единицах SVG.</param>
+        /// <param name="padding">Внутренний отступ от краёв прямоугольника.</param>
+        /// <param name="charWidthFactor">
+        /// Приблизительная ширина одного символа относительно размера шрифта.
+        /// </param>
+        /// <param name="fontColor">
+        /// Цвет шрифта. Если <c>null</c>, атрибут <c>fill</c> у текста не меняется
+        /// (сохраняется цвет из шаблона или наследуется от родителя).
+        /// </param>
+        public void SetFieldTextWithAutoWrap(
+            string fieldId,
+            string text,
+            float fontSize,
+            float padding = 4f,
+            float charWidthFactor = 0.55f,
+            SKColor? fontColor = null)
+        {
+            EnsureNotDisposed();
+
+            if (string.IsNullOrWhiteSpace(fieldId))
+                throw new ArgumentException("id поля не задан.", nameof(fieldId));
+            if (fontSize <= 0)
+                throw new ArgumentException("Размер шрифта должен быть больше нуля.", nameof(fontSize));
+
+            // 1. Ищем существующий SvgText (в т.ч. созданный ранее как <id>_text).
+            var textElement =
+                _document.GetElementById<SvgText>(fieldId) ??
+                _document.GetElementById<SvgText>(fieldId + "_text");
+
+            // 2. Ищем прямоугольник с тем же id.
+            var rect = _document.GetElementById<SvgRectangle>(fieldId);
+
+            if (textElement == null && rect == null)
+                throw new ArgumentException(
+                    "Элемент с id '" + fieldId + "' не найден ни как SvgText, ни как SvgRectangle.",
+                    nameof(fieldId));
+
+            // 3. Вычисляем область размещения текста.
+            float left, top, maxWidth;
+
+            if (rect != null)
+            {
+                left = rect.X.Value + padding;
+                top = rect.Y.Value + padding;
+                maxWidth = rect.Width.Value - padding * 2f;
+            }
+            else
+            {
+                float existingX = (textElement.X != null && textElement.X.Count > 0)
+                    ? textElement.X[0].Value : 0f;
+                float existingBaselineY = (textElement.Y != null && textElement.Y.Count > 0)
+                    ? textElement.Y[0].Value : fontSize;
+
+                left = existingX;
+                top = existingBaselineY - fontSize;
+                maxWidth = 0f;
+            }
+
+            float charWidth = fontSize * charWidthFactor;
+            float lineHeight = fontSize * 1.2f;
+            var lines = WrapText(text, maxWidth, charWidth);
+
+            // 4. При необходимости создаём SvgText поверх rect.
+            if (textElement == null)
+            {
+                textElement = new SvgText
+                {
+                    ID = fieldId + "_text",
+                    TextAnchor = SvgTextAnchor.Start
+                };
+
+                if (rect is ISvgTransformable transformableRect &&
+                    transformableRect.Transforms != null &&
+                    transformableRect.Transforms.Count > 0)
+                {
+                    textElement.Transforms = transformableRect.Transforms;
+                }
+
+                if (rect != null && rect.Parent != null)
+                    rect.Parent.Children.Add(textElement);
+                else
+                    _document.Children.Add(textElement);
+            }
+
+            // 5. Задаём позицию и добавляем строки в виде <tspan>.
+            textElement.Children.Clear();
+            textElement.Text = string.Empty;
+            textElement.Nodes.Clear();
+
+            textElement.FontSize = new SvgUnit(SvgUnitType.User, fontSize);
+            textElement.TextAnchor = SvgTextAnchor.Start;
+
+            // X/Y на самом <text> — позиция первой строки.
+            // X дублируется на каждом <tspan>, чтобы каждая строка начиналась слева,
+            // а не продолжала предыдущую.
+            textElement.X = new SvgUnitCollection
+{
+    new SvgUnit(SvgUnitType.User, left)
+};
+            textElement.Y = new SvgUnitCollection
+{
+    new SvgUnit(SvgUnitType.User, top + fontSize)
+};
+
+            if (fontColor.HasValue)
+            {
+                var c = fontColor.Value;
+                textElement.Fill = new SvgColourServer(
+                    System.Drawing.Color.FromArgb(c.Alpha, c.Red, c.Green, c.Blue));
+            }
+
+            for (int i = 0; i < lines.Count; i++)
+            {
+                var span = new SvgTextSpan
+                {
+                    Text = lines[i]
+                };
+
+                // КЛЮЧЕВОЕ: сбрасываем X для каждого <tspan>, иначе строка
+                // продолжается с конца предыдущей, а не начинается заново.
+                span.X = new SvgUnitCollection
+    {
+        new SvgUnit(SvgUnitType.User, left)
+    };
+
+                if (i > 0)
+                {
+                    span.Dy = new SvgUnitCollection
+        {
+            new SvgUnit(SvgUnitType.User, lineHeight)
+        };
+                }
+
+                if (fontColor.HasValue)
+                {
+                    var c = fontColor.Value;
+                    span.Fill = new SvgColourServer(
+                        System.Drawing.Color.FromArgb(c.Alpha, c.Red, c.Green, c.Blue));
+                }
+
+                textElement.Children.Add(span);
+            }
+
+            // 6. Увеличиваем высоту rect, если строки не помещаются.
+            if (rect != null)
+            {
+                float requiredHeight = padding * 2f + lines.Count * lineHeight;
+                if (requiredHeight > rect.Height.Value)
+                    rect.Height = new SvgUnit(SvgUnitType.User, requiredHeight);
+            }
+        }
+
+        /// <summary>
+        /// Задаёт координаты X/Y для текстового элемента SVG.
+        /// </summary>
+        private static void SetTextPosition(SvgTextBase element, float x, float y)
+        {
+            element.X = new SvgUnitCollection
+    {
+        new SvgUnit(SvgUnitType.User, x)
+    };
+
+            element.Y = new SvgUnitCollection
+    {
+        new SvgUnit(SvgUnitType.User, y)
+    };
+        }
+
+        /// <summary>
+        /// Эвристически разбивает текст на строки по ширине.
+        /// Длинные слова при необходимости разрезаются посимвольно.
+        /// </summary>
+        private static List<string> WrapText(string text, float maxWidth, float charWidth)
+        {
+            var result = new List<string>();
+
+            if (maxWidth <= 0 || charWidth <= 0)
+            {
+                result.Add(text ?? string.Empty);
+                return result;
+            }
+
+            string normalized = (text ?? string.Empty)
+                .Replace("\r\n", "\n")
+                .Replace('\r', '\n');
+
+            string[] paragraphs = normalized.Split('\n');
+
+            foreach (string paragraph in paragraphs)
+            {
+                if (paragraph.Length == 0)
+                {
+                    result.Add(string.Empty);
+                    continue;
+                }
+
+                string[] words = paragraph.Split(
+                    new[] { ' ' },
+                    StringSplitOptions.RemoveEmptyEntries);
+
+                var line = new StringBuilder();
+
+                foreach (string word in words)
+                {
+                    string candidate = line.Length == 0
+                        ? word
+                        : line + " " + word;
+
+                    if (candidate.Length * charWidth <= maxWidth)
+                    {
+                        if (line.Length > 0)
+                            line.Append(' ');
+
+                        line.Append(word);
+                        continue;
+                    }
+
+                    if (line.Length > 0)
+                    {
+                        result.Add(line.ToString());
+                        line.Clear();
+                    }
+
+                    // Слово само помещается в строку.
+                    if (word.Length * charWidth <= maxWidth)
+                    {
+                        line.Append(word);
+                        continue;
+                    }
+
+                    // Слово слишком длинное — режем посимвольно.
+                    int maxChars = Math.Max(1, (int)Math.Floor(maxWidth / charWidth));
+
+                    for (int i = 0; i < word.Length; i += maxChars)
+                    {
+                        int length = Math.Min(maxChars, word.Length - i);
+                        string part = word.Substring(i, length);
+
+                        if (i + length < word.Length)
+                            result.Add(part);
+                        else
+                            line.Append(part);
+                    }
+                }
+
+                if (line.Length > 0)
+                    result.Add(line.ToString());
+            }
+
+            if (result.Count == 0)
+                result.Add(string.Empty);
+
+            return result;
         }
         /// <summary>
         /// Освобождает ресурсы, удерживаемые процессором, и обнуляет
