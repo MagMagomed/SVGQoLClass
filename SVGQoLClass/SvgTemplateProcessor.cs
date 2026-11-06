@@ -58,11 +58,37 @@ namespace SVGQoLClass
     /// </example>
     public sealed class SvgTemplateProcessor : IDisposable
     {
+        #region ПОЛЯ
         /// <summary>
         /// Нижележащий SVG-документ. Устанавливается в <c>null</c> после
         /// <see cref="Dispose"/> как маркер освобождённого состояния.
         /// </summary>
         private SvgDocument _document;
+        #endregion
+        #region СВОЙСТВА
+        /// <summary>
+        /// Возвращает нижележащий <see cref="SvgDocument"/> для нестандартных
+        /// сценариев, не покрытых публичным API.
+        /// </summary>
+        /// <value>Корректный SVG-документ, загруженный при создании экземпляра.</value>
+        /// <exception cref="ObjectDisposedException">
+        /// Экземпляр уже освобождён вызовом <see cref="Dispose"/>.
+        /// </exception>
+        /// <remarks>
+        /// Возвращаемая ссылка позволяет напрямую манипулировать DOM
+        /// (<see cref="SvgElement"/> и его наследники). Учтите, что такие изменения
+        /// не проходят через валидацию, выполняемую методами
+        /// <see cref="SetFieldText"/> и <see cref="SetFieldSize"/>.
+        /// </remarks>
+        public SvgDocument Document
+        {
+            get
+            {
+                EnsureNotDisposed();
+                return _document;
+            }
+        }
+        #endregion
 
         /// <summary>
         /// Инициализирует новый экземпляр <see cref="SvgTemplateProcessor"/>
@@ -73,8 +99,25 @@ namespace SVGQoLClass
         {
             _document = document;
         }
-
-        // ==================== ФАБРИЧНЫЕ МЕТОДЫ ====================
+        /// <summary>
+        /// Освобождает ресурсы, удерживаемые процессором, и обнуляет
+        /// внутреннюю ссылку на <see cref="SvgDocument"/>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// После вызова этого метода любые операции с экземпляром
+        /// (включая чтение свойства <see cref="Document"/>) приводят
+        /// к <see cref="ObjectDisposedException"/>.
+        /// </para>
+        /// <para>
+        /// Метод идемпотентен: повторный вызов не генерирует исключений.
+        /// </para>
+        /// </remarks>
+        public void Dispose()
+        {
+            _document = null;
+        }
+        #region ФВБРИЧНЫЕ МЕТОДЫ
 
         /// <summary>
         /// Создаёт экземпляр <see cref="SvgTemplateProcessor"/>, загружая SVG-документ
@@ -194,34 +237,8 @@ namespace SVGQoLClass
             if (document == null) throw new ArgumentNullException(nameof(document));
             return new SvgTemplateProcessor(document);
         }
-
-        // ==================== СВОЙСТВА ====================
-
-        /// <summary>
-        /// Возвращает нижележащий <see cref="SvgDocument"/> для нестандартных
-        /// сценариев, не покрытых публичным API.
-        /// </summary>
-        /// <value>Корректный SVG-документ, загруженный при создании экземпляра.</value>
-        /// <exception cref="ObjectDisposedException">
-        /// Экземпляр уже освобождён вызовом <see cref="Dispose"/>.
-        /// </exception>
-        /// <remarks>
-        /// Возвращаемая ссылка позволяет напрямую манипулировать DOM
-        /// (<see cref="SvgElement"/> и его наследники). Учтите, что такие изменения
-        /// не проходят через валидацию, выполняемую методами
-        /// <see cref="SetFieldText"/> и <see cref="SetFieldSize"/>.
-        /// </remarks>
-        public SvgDocument Document
-        {
-            get
-            {
-                EnsureNotDisposed();
-                return _document;
-            }
-        }
-
-        // ==================== ОПЕРАЦИИ ====================
-
+        #endregion
+        #region ОПЕРАЦИИ
         /// <summary>
         /// Устанавливает новый текст для поля с указанным идентификатором.
         /// </summary>
@@ -692,6 +709,8 @@ namespace SVGQoLClass
                 finalFontSize, finalLineHeight, fontColor);
             EnsureRectHeightForLines(rect, finalLines.Count, finalLineHeight, padding);
         }
+        #endregion
+        #region ПРИВАТНЫЕ ХЕЛПЕРЫ ДЛЯ РАБОТЫ С ТЕКСТОМ
         /// <summary>
         /// Задаёт координаты X/Y для текстового элемента SVG.
         /// </summary>
@@ -794,25 +813,6 @@ namespace SVGQoLClass
 
             return result;
         }
-        /// <summary>
-        /// Освобождает ресурсы, удерживаемые процессором, и обнуляет
-        /// внутреннюю ссылку на <see cref="SvgDocument"/>.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// После вызова этого метода любые операции с экземпляром
-        /// (включая чтение свойства <see cref="Document"/>) приводят
-        /// к <see cref="ObjectDisposedException"/>.
-        /// </para>
-        /// <para>
-        /// Метод идемпотентен: повторный вызов не генерирует исключений.
-        /// </para>
-        /// </remarks>
-        public void Dispose()
-        {
-            _document = null;
-        }
-        // ==================== ПРИВАТНЫЕ ХЕЛПЕРЫ ДЛЯ РАБОТЫ С ТЕКСТОМ ====================
 
         /// <summary>
         /// Проверяет аргументы, общие для методов автозаписи текста.
@@ -1049,4 +1049,5 @@ namespace SVGQoLClass
             }
         }
     }
+    #endregion
 }

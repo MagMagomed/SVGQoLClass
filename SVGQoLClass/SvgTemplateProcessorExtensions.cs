@@ -117,7 +117,7 @@ namespace SVGQoLClass
             return processor.GetByteArrayAsPdf(background);
         }
 
-        // ==================== FLUENT-FRIENDLY АЛЬТЕРНАТИВЫ ====================
+        #region FLUENT-FRIENDLY АЛЬТЕРНАТИВЫ
 
         /// <summary>
         /// Терминальная операция fluent-цепочки: возвращает SVG как массив байт.
@@ -407,5 +407,6 @@ namespace SVGQoLClass
 
             return processor;
         }
+        #endregion
     }
 }
