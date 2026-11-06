@@ -115,11 +115,12 @@ namespace SVGQoLClass.Tests
         {
             try
             {
-                //if (_testName != null)
-                //{
-                //    var dir = Path.Combine(_runDir, _testName);
-                //    if (Directory.Exists(dir)) Directory.Delete(dir, true);
-                //}
+                if (_testName != null)
+                {
+                    var dir = Path.Combine(_runDir, _testName);
+                    if (Directory.Exists(dir)) Directory.Delete(dir, true);
+                }
+                if (Directory.Exists(_runDir)) Directory.Delete(_runDir, true);
             }
             catch
             {
