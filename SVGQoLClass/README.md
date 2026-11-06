@@ -1,4 +1,4 @@
-﻿# SvgTemplateProcessor
+﻿# SVGQoLClass
 
 Класс-обёртка над библиотеками Svg.Custom и Svg.Skia для работы с SVG-шаблонами в .NET Framework 4.7.2+ и .NET 6+.
 
