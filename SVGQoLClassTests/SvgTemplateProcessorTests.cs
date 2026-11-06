@@ -14,8 +14,20 @@ namespace SVGQoLClass.Tests
     [TestClass()]
     public class SvgTemplateProcessorTests
     {
-        private string _testDir;
+        // Корневая папка одного прогона: TestResults/Run_<timestamp>.
+        private static string _runDir;
+        // Общий вход для read-only тестов: <Run>/template.svg.
+        // Создаётся один раз в [ClassInitialize].
+        private static string _sharedTemplatePath;
+        private static int _fallbackCounter;
+
+        // Имя текущего теста — база для имени папки (если она понадобится).
+        private string _testName;
+        // Путь к шаблону. Для всех тестов указывает на общий <Run>/template.svg.
         private string _templatePath;
+
+        // MSTest v2 прокидывает TestContext в каждый экземпляр класса.
+        public TestContext TestContext { get; set; }
 
         // Простой шаблон: <rect> и <text> с id.
         // small_rect — для тестов autosize (маленький, чтобы шрифт приходилось уменьшать).
@@ -30,31 +42,84 @@ namespace SVGQoLClass.Tests
   <text id=""suffix_text"" x=""150"" y=""100"" font-size=""12"">suffix</text>
 </svg>";
 
+        [ClassInitialize]
+        public static void ClassInit(TestContext context)
+        {
+            string assemblyDir = AppDomain.CurrentDomain.BaseDirectory;
+            string projectDir = Path.GetFullPath(Path.Combine(assemblyDir, "..", "..", ".."));
+            string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+            _runDir = Path.Combine(projectDir, "TestResults", $"Run_{timestamp}");
+            Directory.CreateDirectory(_runDir);
+
+            // Один общий входной SVG на весь прогон.
+            // Тестам, которые пишут результат, он копируется в их папку.
+            _sharedTemplatePath = Path.Combine(_runDir, "template.svg");
+            File.WriteAllText(_sharedTemplatePath, TestSvg, new UTF8Encoding(false));
+        }
+
         [TestInitialize]
         public void Setup()
         {
-            // 1. Получаем корень проекта тестов
-            string assemblyDir = AppDomain.CurrentDomain.BaseDirectory;
-            string projectDir = Path.GetFullPath(Path.Combine(assemblyDir, "..", "..", ".."));
+            // Страховка: если ClassInitialize по какой-то причине не вызвался.
+            if (_runDir == null)
+            {
+                string assemblyDir = AppDomain.CurrentDomain.BaseDirectory;
+                string projectDir = Path.GetFullPath(Path.Combine(assemblyDir, "..", "..", ".."));
+                _runDir = Path.Combine(projectDir, "TestResults",
+                    $"Run_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}");
+                Directory.CreateDirectory(_runDir);
 
-            string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+                _sharedTemplatePath = Path.Combine(_runDir, "template.svg");
+                File.WriteAllText(_sharedTemplatePath, TestSvg, new UTF8Encoding(false));
+            }
 
-            // 3. Создаем персональную подпапку внутри TestResults
-            _testDir = Path.Combine(projectDir, "TestResults", $"Run_{timestamp}");
-            Directory.CreateDirectory(_testDir);
+            // Имя текущего теста. В MSTest v2 TestContext.TestName
+            // доступно уже в [TestInitialize].
+            string testName = TestContext?.TestName;
+            if (string.IsNullOrWhiteSpace(testName))
+                testName = $"Test_{System.Threading.Interlocked.Increment(ref _fallbackCounter)}";
 
-            // 4. Записываем шаблон в эту новую папку
-            _templatePath = Path.Combine(_testDir, "template.svg");
-            File.WriteAllText(_templatePath, TestSvg, new UTF8Encoding(false));
+            foreach (char c in Path.GetInvalidFileNameChars())
+                testName = testName.Replace(c, '_');
+
+            _testName = testName;
+            _templatePath = _sharedTemplatePath;
+
+            // Папку <Run>/<TestName>/ НЕ создаём: тесты, которые не пишут файл,
+            // не должны оставлять пустых каталогов. Она появится лениво —
+            // в момент первого OutPath(...).
         }
+
+        // Ленивая папка текущего теста. При первом обращении создаётся
+        // и в неё копируется общий template.svg (снимок входа).
+        private string EnsureTestDir()
+        {
+            string dir = Path.Combine(_runDir, _testName);
+            if (!Directory.Exists(dir))
+            {
+                Directory.CreateDirectory(dir);
+                File.Copy(_sharedTemplatePath,
+                    Path.Combine(dir, "template.svg"),
+                    overwrite: true);
+            }
+            return dir;
+        }
+
+        // Куда сохранять результат. Расширение определяет тип выхода:
+        // out.svg — для SVG-тестов, out.pdf — для PDF-тестов.
+        private string OutPath(string fileName)
+            => Path.Combine(EnsureTestDir(), fileName);
 
         [TestCleanup]
         public void Cleanup()
         {
             try
             {
-                //if (Directory.Exists(_testDir))
-                //    Directory.Delete(_testDir, true);
+                //if (_testName != null)
+                //{
+                //    var dir = Path.Combine(_runDir, _testName);
+                //    if (Directory.Exists(dir)) Directory.Delete(dir, true);
+                //}
             }
             catch
             {
@@ -79,7 +144,9 @@ namespace SVGQoLClass.Tests
         [ExpectedException(typeof(FileNotFoundException))]
         public void FromFile_MissingFile_Throws()
         {
-            SvgTemplateProcessor.FromFile(Path.Combine(_testDir, "missing.svg"));
+            // Файла "missing.svg" нет — ожидаем исключение.
+            SvgTemplateProcessor.FromFile(
+                Path.Combine(_runDir, _testName ?? "no_test", "missing.svg"));
         }
 
         [TestMethod()]
@@ -142,7 +209,7 @@ namespace SVGQoLClass.Tests
         [TestMethod()]
         public void SetFieldTextTest()
         {
-            string outPath = Path.Combine(_testDir, "out.svg");
+            string outPath = OutPath("out.svg");
             using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
             {
                 processor.SetFieldText("field_name", "Иван Петров");
@@ -193,7 +260,7 @@ namespace SVGQoLClass.Tests
         [TestMethod()]
         public void SetFieldSizeTest()
         {
-            string outPath = Path.Combine(_testDir, "out.svg");
+            string outPath = OutPath("out.svg");
             using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
             {
                 processor.SetFieldSize("field_rect", 200, 100);
@@ -208,7 +275,7 @@ namespace SVGQoLClass.Tests
         [TestMethod()]
         public void SetFieldSize_OnText_SetsTextLength()
         {
-            string outPath = Path.Combine(_testDir, "out.svg");
+            string outPath = OutPath("out.svg");
             using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
             {
                 processor.SetFieldSize("field_name", 250, 30);
@@ -262,7 +329,7 @@ namespace SVGQoLClass.Tests
         [TestMethod()]
         public void FitFieldToTextTest()
         {
-            string outPath = Path.Combine(_testDir, "out.svg");
+            string outPath = OutPath("out.svg");
             using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
             {
                 // "0123456789" = 10 символов
@@ -280,7 +347,7 @@ namespace SVGQoLClass.Tests
         [TestMethod()]
         public void FitFieldToText_EmptyText_NoChange()
         {
-            string outPath = Path.Combine(_testDir, "out.svg");
+            string outPath = OutPath("out.svg");
             using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
             {
                 processor.FitFieldToText("field_rect", "");
@@ -302,7 +369,6 @@ namespace SVGQoLClass.Tests
                 processor.WithAutoWrapText("field_rect", "Some text that may wrap",
                     fontSize: 12f);
 
-                // Над прямоугольником должен появиться SvgText с id = fieldId + "_text".
                 var t = processor.Document.GetElementById<SvgText>("field_rect_text");
                 Assert.IsNotNull(t, "Должен быть создан SvgText с id 'field_rect_text'.");
                 Assert.IsTrue(t.Children.Count > 0, "В тексте должны быть tspan-строки.");
@@ -318,7 +384,6 @@ namespace SVGQoLClass.Tests
 
                 var t = processor.Document.GetElementById<SvgText>("field_date");
                 Assert.IsNotNull(t);
-                // Прямоугольника нет → без переноса (одна строка).
                 Assert.AreEqual(1, t.Children.Count);
                 Assert.AreEqual("Updated", ((SvgTextSpan)t.Children[0]).Text);
             }
@@ -329,7 +394,6 @@ namespace SVGQoLClass.Tests
         {
             using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
             {
-                // Прямоугольника "suffix" нет, есть только текст "suffix_text".
                 processor.WithAutoWrapText("suffix", "Zzz", fontSize: 12f);
 
                 var t = processor.Document.GetElementById<SvgText>("suffix_text");
@@ -346,8 +410,6 @@ namespace SVGQoLClass.Tests
             {
                 var before = ((SvgRectangle)processor.Document.GetElementById("field_rect")).Height.Value;
 
-                // 5 строк при fontSize=12 (lineHeight=14.4) + padding=4
-                // требуется высота ≈ 8 + 5*14.4 = 80 > исходных 50.
                 processor.WithAutoWrapText("field_rect", "L1\nL2\nL3\nL4\nL5", fontSize: 12f);
 
                 var after = ((SvgRectangle)processor.Document.GetElementById("field_rect")).Height.Value;
@@ -398,9 +460,6 @@ namespace SVGQoLClass.Tests
         {
             using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
             {
-                // small_rect: 80x40. При fontSize=20 одна строка = 24px,
-                // доступно 32px → текст длиннее одной строки не влезет.
-                // maxRowsIncrement=0 запрещает увеличивать высоту → шрифт должен уменьшиться.
                 processor.WithAutoFontSizingText(
                     "small_rect",
                     "This text is too long for the small box",
@@ -420,8 +479,6 @@ namespace SVGQoLClass.Tests
         {
             using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
             {
-                // field_date — SvgText без прямоугольника → autosize невозможен,
-                // размер шрифта должен остаться исходным.
                 processor.WithAutoFontSizingText("field_date", "Hello", fontSize: 14f);
 
                 var t = processor.Document.GetElementById<SvgText>("field_date");
@@ -480,7 +537,7 @@ namespace SVGQoLClass.Tests
         [TestMethod()]
         public void SaveSvgTest()
         {
-            string outPath = Path.Combine(_testDir, "saved.svg");
+            string outPath = OutPath("out.svg");
             using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
             {
                 processor.SaveSvg(outPath);
@@ -508,7 +565,8 @@ namespace SVGQoLClass.Tests
         [TestMethod()]
         public void ConvertToPdfTest()
         {
-            string pdfPath = Path.Combine(_testDir, "output.pdf");
+            // Тест пишет PDF → в папке будет template.svg + out.pdf.
+            string pdfPath = OutPath("out.pdf");
             using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
             {
                 processor.SetFieldText("field_name", "Тест");
@@ -529,7 +587,7 @@ namespace SVGQoLClass.Tests
         [TestMethod()]
         public void ConvertToPdf_WithTransparentBackground_CreatesPdf()
         {
-            string pdfPath = Path.Combine(_testDir, "output_transparent.pdf");
+            string pdfPath = OutPath("out.pdf");
             using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
             {
                 processor.ConvertToPdf(pdfPath);
@@ -584,8 +642,9 @@ namespace SVGQoLClass.Tests
         [TestMethod()]
         public void FluentChain_ProducesBothOutputs()
         {
-            string outSvg = Path.Combine(_testDir, "chain.svg");
-            string outPdf = Path.Combine(_testDir, "chain.pdf");
+            // Оба результата — svg и pdf — в одной папке теста.
+            string outSvg = OutPath("out.svg");
+            string outPdf = OutPath("out.pdf");
 
             using (SvgTemplateProcessor
                 .FromFile(_templatePath)
@@ -604,7 +663,7 @@ namespace SVGQoLClass.Tests
         [TestMethod()]
         public void WithFields_BatchUpdate_Works()
         {
-            string outPath = Path.Combine(_testDir, "batch.svg");
+            string outPath = OutPath("out.svg");
             using (SvgTemplateProcessor
                 .FromFile(_templatePath)
                 .WithFields(new Dictionary<string, string>
@@ -624,7 +683,7 @@ namespace SVGQoLClass.Tests
         [TestMethod()]
         public void WithFittedText_Chain_Works()
         {
-            string outPath = Path.Combine(_testDir, "fitted.svg");
+            string outPath = OutPath("out.svg");
             using (SvgTemplateProcessor
                 .FromFile(_templatePath)
                 .WithFittedText("field_rect", "0123456789", charWidth: 10f, padding: 4f)
@@ -688,7 +747,7 @@ namespace SVGQoLClass.Tests
         [TestMethod()]
         public void GetByteArray_MatchesSaveSvg()
         {
-            string outPath = Path.Combine(_testDir, "saved.svg");
+            string outPath = OutPath("out.svg");
             byte[] fromMemory, fromFile;
 
             using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
@@ -766,7 +825,7 @@ namespace SVGQoLClass.Tests
         [TestMethod()]
         public void GetByteArrayAsPdf_MatchesConvertToPdf()
         {
-            string pdfPath = Path.Combine(_testDir, "output.pdf");
+            string pdfPath = OutPath("out.pdf");
             byte[] fromMemory, fromFile;
 
             using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
@@ -776,9 +835,7 @@ namespace SVGQoLClass.Tests
             }
             fromFile = File.ReadAllBytes(pdfPath);
 
-            // PDF-файлы могут отличаться побайтово из-за встроенных метаданных
-            // (дата создания, уникальный ID). Поэтому проверяем только сигнатуру
-            // и то, что оба файла валидны.
+            // PDF-файлы могут отличаться побайтово из-за встроенных метаданных.
             Assert.AreEqual("%PDF-", Encoding.ASCII.GetString(fromMemory, 0, 5));
             Assert.AreEqual("%PDF-", Encoding.ASCII.GetString(fromFile, 0, 5));
             Assert.IsTrue(fromMemory.Length > 100);
@@ -800,8 +857,6 @@ namespace SVGQoLClass.Tests
         {
             using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
             {
-                // Вызов именно метода расширения (через статический класс),
-                // а не экземплярного метода.
                 byte[] bytes = SvgTemplateProcessorExtensions.GetByteArray(processor);
 
                 Assert.IsNotNull(bytes);
@@ -876,8 +931,6 @@ namespace SVGQoLClass.Tests
         {
             using (var processor = SvgTemplateProcessor.FromFile(_templatePath))
             {
-                // Вызов с null (прозрачный фон) через именованный аргумент,
-                // чтобы явно указать, что используется значение по умолчанию.
                 byte[] bytes = SvgTemplateProcessorExtensions.GetByteArrayAsPdf(
                     processor, background: null);
 
@@ -894,8 +947,6 @@ namespace SVGQoLClass.Tests
                 byte[] instanceResult = processor.GetByteArrayAsPdf(SKColors.White);
                 byte[] extensionResult = SvgTemplateProcessorExtensions.GetByteArrayAsPdf(processor, SKColors.White);
 
-                // PDF-файлы могут отличаться побайтово из-за встроенных метаданных,
-                // поэтому проверяем сигнатуру и размер, а не полное равенство.
                 Assert.AreEqual("%PDF-", Encoding.ASCII.GetString(instanceResult, 0, 5));
                 Assert.AreEqual("%PDF-", Encoding.ASCII.GetString(extensionResult, 0, 5));
                 Assert.IsTrue(instanceResult.Length > 100);
@@ -1125,8 +1176,6 @@ namespace SVGQoLClass.Tests
             StringAssert.Contains(svgContent, "field_rect_text");
             StringAssert.Contains(svgContent, "small_rect_text");
 
-            // Текст разбит на tspan-ы, поэтому проверяем фрагмент, который
-            // гарантированно остаётся в одном tspan.
             StringAssert.Contains(svgContent, "Очень длинный");
             StringAssert.Contains(svgContent, "перенестись");
         }
