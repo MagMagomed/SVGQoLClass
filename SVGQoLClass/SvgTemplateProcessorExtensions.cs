@@ -271,5 +271,141 @@ namespace SVGQoLClass
 
             return processor;
         }
+        /// <summary>
+        /// Fluent-обёртка над <see cref="SvgTemplateProcessor.SetFieldTextWithAutoFontSizing"/>:
+        /// устанавливает текст с автоматическим переносом строк и подбором размера
+        /// шрифта. Сначала ищет <c>SvgText</c> по id; если не найден — ищет
+        /// <c>SvgRectangle</c> с тем же id, создаёт поверх него <c>SvgText</c>
+        /// и, при необходимости, увеличивает высоту прямоугольника на
+        /// <paramref name="maxRowsIncrement"/> строк. Если новых строк недостаточно —
+        /// уменьшает размер шрифта, пока текст не впишется полностью.
+        /// </summary>
+        /// <param name="processor">Целевой процессор.</param>
+        /// <param name="fieldId">
+        /// id текстового элемента или прямоугольника, поверх которого нужно
+        /// разместить текст.
+        /// </param>
+        /// <param name="text">Текст для вставки.</param>
+        /// <param name="fontSize">
+        /// Исходный (максимальный) размер шрифта в единицах SVG.
+        /// При нехватке места будет уменьшаться.
+        /// </param>
+        /// <param name="maxRowsIncrement">
+        /// Максимальное количество строк, на которое разрешено увеличить высоту
+        /// прямоугольника. Строки считаются в размерности исходного
+        /// <paramref name="fontSize"/>.
+        /// </param>
+        /// <param name="padding">Внутренний отступ от краёв прямоугольника.</param>
+        /// <param name="charWidthFactor">
+        /// Приблизительная ширина одного символа относительно размера шрифта.
+        /// Используется для эвристического переноса строк и autosizing.
+        /// </param>
+        /// <param name="fontColor">
+        /// Цвет шрифта. Если <c>null</c>, атрибут <c>fill</c> у текста не меняется
+        /// (сохраняется цвет из шаблона или наследуется от родителя).
+        /// </param>
+        /// <returns>Тот же экземпляр <paramref name="processor"/> для продолжения цепочки.</returns>
+        /// <exception cref="ArgumentNullException">
+        /// <paramref name="processor"/> равен <c>null</c>.
+        /// </exception>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="fieldId"/> не задан, элемент с таким id не найден,
+        /// размер шрифта не положителен либо <paramref name="maxRowsIncrement"/>
+        /// отрицателен.
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">
+        /// Экземпляр уже освобождён.
+        /// </exception>
+        /// <example>
+        /// <code>
+        /// SvgTemplateProcessor
+        ///     .FromFile("template.svg")
+        ///     .WithAutoFontSizingText("field_rect", "Очень длинный текст…",
+        ///                             fontSize: 16, maxRowsIncrement: 2)
+        ///     .SaveTo("output.svg");
+        /// </code>
+        /// </example>
+        public static SvgTemplateProcessor WithAutoFontSizingText(
+            this SvgTemplateProcessor processor,
+            string fieldId,
+            string text,
+            float fontSize,
+            int maxRowsIncrement = 3,
+            float padding = 4f,
+            float charWidthFactor = 0.55f,
+            SKColor? fontColor = null)
+        {
+            if (processor == null) throw new ArgumentNullException(nameof(processor));
+            processor.SetFieldTextWithAutoFontSizing(
+                fieldId, text, fontSize,
+                maxRowsIncrement, padding, charWidthFactor, fontColor);
+            return processor;
+        }
+        /// <summary>
+        /// Пакетная fluent-обёртка над
+        /// <see cref="SvgTemplateProcessor.SetFieldTextWithAutoFontSizing"/>:
+        /// последовательно применяет перенос строк с подбором шрифта к нескольким
+        /// полям. Удобна, когда поля задаются из словаря (например, из БД или JSON).
+        /// </summary>
+        /// <param name="processor">Целевой процессор.</param>
+        /// <param name="fields">Словарь «id поля → текст».</param>
+        /// <param name="fontSize">
+        /// Исходный (максимальный) размер шрифта, применяемый ко всем полям.
+        /// </param>
+        /// <param name="maxRowsIncrement">
+        /// Максимальное количество строк, на которое разрешено увеличить высоту
+        /// каждого прямоугольника.
+        /// </param>
+        /// <param name="padding">Внутренний отступ от краёв прямоугольников.</param>
+        /// <param name="charWidthFactor">
+        /// Приблизительная ширина одного символа относительно размера шрифта.
+        /// </param>
+        /// <param name="fontColor">
+        /// Цвет шрифта. Если <c>null</c>, атрибут <c>fill</c> не меняется.
+        /// </param>
+        /// <returns>Тот же экземпляр <paramref name="processor"/> для продолжения цепочки.</returns>
+        /// <exception cref="ArgumentNullException">
+        /// <paramref name="processor"/> или <paramref name="fields"/> равны <c>null</c>.
+        /// </exception>
+        /// <exception cref="ArgumentException">
+        /// Один из id не найден, размер шрифта не положителен либо
+        /// <paramref name="maxRowsIncrement"/> отрицателен.
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">
+        /// Экземпляр уже освобождён.
+        /// </exception>
+        /// <example>
+        /// <code>
+        /// var data = new Dictionary&lt;string, string&gt;
+        /// {
+        ///     ["field_fio"]  = "Иван Петров",
+        ///     ["field_addr"] = "г. Москва, ул. Ленина, д. 1, кв. 42",
+        /// };
+        ///
+        /// SvgTemplateProcessor
+        ///     .FromFile("template.svg")
+        ///     .WithAutoFontSizingFields(data, fontSize: 14, maxRowsIncrement: 2)
+        ///     .SavePdfTo("output.pdf", SKColors.White);
+        /// </code>
+        /// </example>
+        public static SvgTemplateProcessor WithAutoFontSizingFields(
+            this SvgTemplateProcessor processor,
+            IDictionary<string, string> fields,
+            float fontSize,
+            int maxRowsIncrement = 3,
+            float padding = 4f,
+            float charWidthFactor = 0.55f,
+            SKColor? fontColor = null)
+        {
+            if (processor == null) throw new ArgumentNullException(nameof(processor));
+            if (fields == null) throw new ArgumentNullException(nameof(fields));
+
+            foreach (var kvp in fields)
+                processor.SetFieldTextWithAutoFontSizing(
+                    kvp.Key, kvp.Value, fontSize,
+                    maxRowsIncrement, padding, charWidthFactor, fontColor);
+
+            return processor;
+        }
     }
 }

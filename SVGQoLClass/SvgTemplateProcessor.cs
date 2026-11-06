@@ -559,7 +559,8 @@ namespace SVGQoLClass
         /// Устанавливает текст в поле с автоматическим переносом строк.
         /// Сначала ищет <see cref="SvgText"/> по id. Если текст не найден,
         /// ищет <see cref="SvgRectangle"/> с тем же id, создаёт поверх него
-        /// <see cref="SvgText"/> и при необходимости увеличивает высоту прямоугольника.
+        /// <see cref="SvgText"/> и при необходимости увеличивает высоту
+        /// прямоугольника.
         /// </summary>
         /// <param name="fieldId">id текстового поля или прямоугольника.</param>
         /// <param name="text">Текст для вставки.</param>
@@ -581,140 +582,116 @@ namespace SVGQoLClass
             SKColor? fontColor = null)
         {
             EnsureNotDisposed();
+            ValidateWrapArgs(fieldId, fontSize);
 
-            if (string.IsNullOrWhiteSpace(fieldId))
-                throw new ArgumentException("id поля не задан.", nameof(fieldId));
-            if (fontSize <= 0)
-                throw new ArgumentException("Размер шрифта должен быть больше нуля.", nameof(fontSize));
+            ResolveFieldElements(fieldId, out var textElement, out var rect);
 
-            // 1. Ищем существующий SvgText (в т.ч. созданный ранее как <id>_text).
-            var textElement =
-                _document.GetElementById<SvgText>(fieldId) ??
-                _document.GetElementById<SvgText>(fieldId + "_text");
-
-            // 2. Ищем прямоугольник с тем же id.
-            var rect = _document.GetElementById<SvgRectangle>(fieldId);
-
-            if (textElement == null && rect == null)
-                throw new ArgumentException(
-                    "Элемент с id '" + fieldId + "' не найден ни как SvgText, ни как SvgRectangle.",
-                    nameof(fieldId));
-
-            // 3. Вычисляем область размещения текста.
-            float left, top, maxWidth;
-
-            if (rect != null)
-            {
-                left = rect.X.Value + padding;
-                top = rect.Y.Value + padding;
-                maxWidth = rect.Width.Value - padding * 2f;
-            }
-            else
-            {
-                float existingX = (textElement.X != null && textElement.X.Count > 0)
-                    ? textElement.X[0].Value : 0f;
-                float existingBaselineY = (textElement.Y != null && textElement.Y.Count > 0)
-                    ? textElement.Y[0].Value : fontSize;
-
-                left = existingX;
-                top = existingBaselineY - fontSize;
-                maxWidth = 0f;
-            }
+            ComputeLayoutArea(
+                rect, textElement, padding, fontSize,
+                out float left, out float top, out float maxWidth);
 
             float charWidth = fontSize * charWidthFactor;
             float lineHeight = fontSize * 1.2f;
             var lines = WrapText(text, maxWidth, charWidth);
 
-            // 4. При необходимости создаём SvgText поверх rect.
-            if (textElement == null)
-            {
-                textElement = new SvgText
-                {
-                    ID = fieldId + "_text",
-                    TextAnchor = SvgTextAnchor.Start
-                };
-
-                if (rect is ISvgTransformable transformableRect &&
-                    transformableRect.Transforms != null &&
-                    transformableRect.Transforms.Count > 0)
-                {
-                    textElement.Transforms = transformableRect.Transforms;
-                }
-
-                if (rect != null && rect.Parent != null)
-                    rect.Parent.Children.Add(textElement);
-                else
-                    _document.Children.Add(textElement);
-            }
-
-            // 5. Задаём позицию и добавляем строки в виде <tspan>.
-            textElement.Children.Clear();
-            textElement.Text = string.Empty;
-            textElement.Nodes.Clear();
-
-            textElement.FontSize = new SvgUnit(SvgUnitType.User, fontSize);
-            textElement.TextAnchor = SvgTextAnchor.Start;
-
-            // X/Y на самом <text> — позиция первой строки.
-            // X дублируется на каждом <tspan>, чтобы каждая строка начиналась слева,
-            // а не продолжала предыдущую.
-            textElement.X = new SvgUnitCollection
-{
-    new SvgUnit(SvgUnitType.User, left)
-};
-            textElement.Y = new SvgUnitCollection
-{
-    new SvgUnit(SvgUnitType.User, top + fontSize)
-};
-
-            if (fontColor.HasValue)
-            {
-                var c = fontColor.Value;
-                textElement.Fill = new SvgColourServer(
-                    System.Drawing.Color.FromArgb(c.Alpha, c.Red, c.Green, c.Blue));
-            }
-
-            for (int i = 0; i < lines.Count; i++)
-            {
-                var span = new SvgTextSpan
-                {
-                    Text = lines[i]
-                };
-
-                // КЛЮЧЕВОЕ: сбрасываем X для каждого <tspan>, иначе строка
-                // продолжается с конца предыдущей, а не начинается заново.
-                span.X = new SvgUnitCollection
-    {
-        new SvgUnit(SvgUnitType.User, left)
-    };
-
-                if (i > 0)
-                {
-                    span.Dy = new SvgUnitCollection
+            textElement = EnsureTextElement(textElement, rect, fieldId);
+            ApplyLinesToText(textElement, lines, left, top, fontSize, lineHeight, fontColor);
+            EnsureRectHeightForLines(rect, lines.Count, lineHeight, padding);
+        }
+        /// <summary>
+        /// Устанавливает текст в поле с автоматическим переносом строк
+        /// и подбором размера шрифта.
+        /// Сначала ищет <see cref="SvgText"/> по id. Если текст не найден,
+        /// ищет <see cref="SvgRectangle"/> с тем же id, создаёт поверх него
+        /// <see cref="SvgText"/> и при необходимости увеличивает высоту
+        /// прямоугольника на заданное количество строк. Если новых строк
+        /// недостаточно — уменьшает размер шрифта до тех пор, пока текст
+        /// не будет полностью вписан в прямоугольник.
+        /// </summary>
+        /// <param name="fieldId">id текстового поля или прямоугольника.</param>
+        /// <param name="text">Текст для вставки.</param>
+        /// <param name="fontSize">
+        /// Исходный (максимальный) размер шрифта в единицах SVG.
+        /// При нехватке места он будет уменьшаться.
+        /// </param>
+        /// <param name="maxRowsIncrement">
+        /// Максимальное количество строк, на которое разрешено увеличить
+        /// высоту прямоугольника. Строки считаются в размерности
+        /// исходного <paramref name="fontSize"/>.
+        /// </param>
+        /// <param name="padding">Внутренний отступ от краёв прямоугольника.</param>
+        /// <param name="charWidthFactor">
+        /// Приблизительная ширина одного символа относительно размера шрифта.
+        /// </param>
+        /// <param name="fontColor">
+        /// Цвет шрифта. Если <c>null</c>, атрибут <c>fill</c> у текста не меняется
+        /// (сохраняется цвет из шаблона или наследуется от родителя).
+        /// </param>
+        /// <remarks>
+        /// <para>
+        /// Алгоритм:
+        /// <list type="number">
+        /// <item>Пересчитывается «бюджет» высоты прямоугольника:
+        /// <c>rect.Height + maxRowsIncrement * lineHeight(initialFontSize)</c>.</item>
+        /// <item>Пока текст при текущем размере шрифта не укладывается в этот
+        /// бюджет, размер шрифта уменьшается с шагом 0.5 до нижней границы 1.</item>
+        /// <item>Итоговая высота прямоугольника увеличивается ровно настолько,
+        /// насколько требуется (но не более бюджета).</item>
+        /// </list>
+        /// </para>
+        /// <para>
+        /// Если прямоугольник не найден (есть только <see cref="SvgText"/>),
+        /// autosizing невозможен — текст записывается как есть с исходным
+        /// <paramref name="fontSize"/>.
+        /// </para>
+        /// </remarks>
+        public void SetFieldTextWithAutoFontSizing(
+            string fieldId,
+            string text,
+            float fontSize,
+            int maxRowsIncrement = 3,
+            float padding = 4f,
+            float charWidthFactor = 0.55f,
+            SKColor? fontColor = null)
         {
-            new SvgUnit(SvgUnitType.User, lineHeight)
-        };
-                }
+            EnsureNotDisposed();
+            ValidateWrapArgs(fieldId, fontSize);
 
-                if (fontColor.HasValue)
-                {
-                    var c = fontColor.Value;
-                    span.Fill = new SvgColourServer(
-                        System.Drawing.Color.FromArgb(c.Alpha, c.Red, c.Green, c.Blue));
-                }
+            if (maxRowsIncrement < 0)
+                throw new ArgumentException(
+                    "Максимальное количество добавляемых строк не может быть отрицательным.",
+                    nameof(maxRowsIncrement));
 
-                textElement.Children.Add(span);
-            }
+            ResolveFieldElements(fieldId, out var textElement, out var rect);
 
-            // 6. Увеличиваем высоту rect, если строки не помещаются.
+            float finalFontSize;
+            float finalLineHeight;
+            List<string> finalLines;
+
             if (rect != null)
             {
-                float requiredHeight = padding * 2f + lines.Count * lineHeight;
-                if (requiredHeight > rect.Height.Value)
-                    rect.Height = new SvgUnit(SvgUnitType.User, requiredHeight);
+                finalFontSize = FitFontSizeToRect(
+                    text, rect, fontSize, padding, charWidthFactor, maxRowsIncrement,
+                    out finalLines, out finalLineHeight);
             }
-        }
+            else
+            {
+                // Нет прямоугольника — не к чему подгонять, используем исходный размер.
+                finalFontSize = fontSize;
+                finalLineHeight = fontSize * 1.2f;
+                finalLines = WrapText(text, 0f, finalFontSize * charWidthFactor);
+            }
 
+            ComputeLayoutArea(
+                rect, textElement, padding, finalFontSize,
+                out float left, out float top, out _);
+
+            textElement = EnsureTextElement(textElement, rect, fieldId);
+            ApplyLinesToText(
+                textElement, finalLines, left, top,
+                finalFontSize, finalLineHeight, fontColor);
+            EnsureRectHeightForLines(rect, finalLines.Count, finalLineHeight, padding);
+        }
         /// <summary>
         /// Задаёт координаты X/Y для текстового элемента SVG.
         /// </summary>
@@ -834,6 +811,242 @@ namespace SVGQoLClass
         public void Dispose()
         {
             _document = null;
+        }
+        // ==================== ПРИВАТНЫЕ ХЕЛПЕРЫ ДЛЯ РАБОТЫ С ТЕКСТОМ ====================
+
+        /// <summary>
+        /// Проверяет аргументы, общие для методов автозаписи текста.
+        /// </summary>
+        private static void ValidateWrapArgs(string fieldId, float fontSize)
+        {
+            if (string.IsNullOrWhiteSpace(fieldId))
+                throw new ArgumentException("id поля не задан.", nameof(fieldId));
+            if (fontSize <= 0)
+                throw new ArgumentException("Размер шрифта должен быть больше нуля.", nameof(fontSize));
+        }
+
+        /// <summary>
+        /// Ищет <see cref="SvgText"/> по <paramref name="fieldId"/>
+        /// (или <c>fieldId + "_text"</c>) и <see cref="SvgRectangle"/>
+        /// с тем же <paramref name="fieldId"/>. Бросает исключение,
+        /// если не найден ни один из них.
+        /// </summary>
+        private void ResolveFieldElements(
+            string fieldId,
+            out SvgText textElement,
+            out SvgRectangle rect)
+        {
+            textElement = _document.GetElementById<SvgText>(fieldId)
+                          ?? _document.GetElementById<SvgText>(fieldId + "_text");
+            rect = _document.GetElementById<SvgRectangle>(fieldId);
+
+            if (textElement == null && rect == null)
+                throw new ArgumentException(
+                    "Элемент с id '" + fieldId + "' не найден ни как SvgText, ни как SvgRectangle.",
+                    nameof(fieldId));
+        }
+
+        /// <summary>
+        /// Вычисляет прямоугольную область размещения текста:
+        /// левый край, верхнюю границу (top-left, не baseline) и
+        /// максимальную ширину строки. Если прямоугольник не задан,
+        /// координаты берутся из существующего <see cref="SvgText"/>.
+        /// </summary>
+        private static void ComputeLayoutArea(
+            SvgRectangle rect,
+            SvgText textElement,
+            float padding,
+            float fontSize,
+            out float left,
+            out float top,
+            out float maxWidth)
+        {
+            if (rect != null)
+            {
+                left = rect.X.Value + padding;
+                top = rect.Y.Value + padding;
+                maxWidth = rect.Width.Value - padding * 2f;
+                return;
+            }
+
+            float existingX = (textElement.X != null && textElement.X.Count > 0)
+                ? textElement.X[0].Value
+                : 0f;
+            float existingBaselineY = (textElement.Y != null && textElement.Y.Count > 0)
+                ? textElement.Y[0].Value
+                : fontSize;
+
+            left = existingX;
+            top = existingBaselineY - fontSize;   // переводим baseline в top-left
+            maxWidth = 0f;
+        }
+
+        /// <summary>
+        /// Возвращает существующий <see cref="SvgText"/> либо создаёт новый
+        /// (с id <c>fieldId + "_text"</c>) и добавляет его в DOM —
+        /// внутрь родителя прямоугольника или в корень документа.
+        /// </summary>
+        private SvgText EnsureTextElement(
+            SvgText textElement,
+            SvgRectangle rect,
+            string fieldId)
+        {
+            if (textElement != null)
+                return textElement;
+
+            textElement = new SvgText
+            {
+                ID = fieldId + "_text",
+                TextAnchor = SvgTextAnchor.Start
+            };
+
+            if (rect is ISvgTransformable transformableRect &&
+                transformableRect.Transforms != null &&
+                transformableRect.Transforms.Count > 0)
+            {
+                textElement.Transforms = transformableRect.Transforms;
+            }
+
+            if (rect != null && rect.Parent != null)
+                rect.Parent.Children.Add(textElement);
+            else
+                _document.Children.Add(textElement);
+
+            return textElement;
+        }
+
+        /// <summary>
+        /// Очищает <see cref="SvgText"/> и записывает в него строки
+        /// в виде <c>&lt;tspan&gt;</c> с правильным позиционированием,
+        /// размером шрифта и (опционально) цветом заливки.
+        /// </summary>
+        private static void ApplyLinesToText(
+            SvgText textElement,
+            List<string> lines,
+            float left,
+            float top,
+            float fontSize,
+            float lineHeight,
+            SKColor? fontColor)
+        {
+            textElement.Children.Clear();
+            textElement.Text = string.Empty;
+            textElement.Nodes.Clear();
+
+            textElement.FontSize = new SvgUnit(SvgUnitType.User, fontSize);
+            textElement.TextAnchor = SvgTextAnchor.Start;
+
+            // Первая строка — на baseline, соответствующем top + fontSize.
+            SetTextPosition(textElement, left, top + fontSize);
+
+            if (fontColor.HasValue)
+            {
+                var c = fontColor.Value;
+                textElement.Fill = new SvgColourServer(
+                    System.Drawing.Color.FromArgb(c.Alpha, c.Red, c.Green, c.Blue));
+            }
+
+            for (int i = 0; i < lines.Count; i++)
+            {
+                var span = new SvgTextSpan { Text = lines[i] };
+
+                // КЛЮЧЕВОЕ: X на каждом tspan, иначе строка «продолжается»
+                // с конца предыдущей, а не начинается заново.
+                span.X = new SvgUnitCollection
+        {
+            new SvgUnit(SvgUnitType.User, left)
+        };
+
+                if (i > 0)
+                {
+                    span.Dy = new SvgUnitCollection
+            {
+                new SvgUnit(SvgUnitType.User, lineHeight)
+            };
+                }
+
+                if (fontColor.HasValue)
+                {
+                    var c = fontColor.Value;
+                    span.Fill = new SvgColourServer(
+                        System.Drawing.Color.FromArgb(c.Alpha, c.Red, c.Green, c.Blue));
+                }
+
+                textElement.Children.Add(span);
+            }
+        }
+
+        /// <summary>
+        /// Увеличивает высоту прямоугольника (если нужно) так,
+        /// чтобы все строки поместились. Уменьшать высоту не умеет —
+        /// это соответствует исходному поведению.
+        /// </summary>
+        private static void EnsureRectHeightForLines(
+            SvgRectangle rect,
+            int lineCount,
+            float lineHeight,
+            float padding)
+        {
+            if (rect == null)
+                return;
+
+            float requiredHeight = padding * 2f + lineCount * lineHeight;
+            if (requiredHeight > rect.Height.Value)
+                rect.Height = new SvgUnit(SvgUnitType.User, requiredHeight);
+        }
+
+        /// <summary>
+        /// Подбирает минимальный (в пределах шага 0.5) размер шрифта,
+        /// при котором текст укладывается в прямоугольник, увеличенный
+        /// не более чем на <paramref name="maxRowsIncrement"/> строк.
+        /// </summary>
+        /// <param name="initialFontSize">
+        /// Исходный (максимальный) размер шрифта. Именно от него
+        /// отсчитывается лимит по высоте.
+        /// </param>
+        /// <param name="lines">Итоговые строки на возвращённом размере шрифта.</param>
+        /// <param name="lineHeight">Межстрочный интервал на возвращённом размере.</param>
+        /// <returns>Размер шрифта, при котором текст помещается.</returns>
+        private static float FitFontSizeToRect(
+            string text,
+            SvgRectangle rect,
+            float initialFontSize,
+            float padding,
+            float charWidthFactor,
+            int maxRowsIncrement,
+            out List<string> lines,
+            out float lineHeight)
+        {
+            const float MinFontSize = 1f;
+            const float ShrinkStep = 0.5f;
+
+            float initialLineHeight = initialFontSize * 1.2f;
+            float initialAvailableHeight = rect.Height.Value - padding * 2f;
+            int initialRows = Math.Max(1, (int)Math.Floor(initialAvailableHeight / initialLineHeight));
+            int maxRows = initialRows + maxRowsIncrement;
+            float maxAllowedHeight = padding * 2f + maxRows * initialLineHeight;
+            float maxWidth = rect.Width.Value - padding * 2f;
+
+            float currentFontSize = initialFontSize;
+
+            while (true)
+            {
+                float currentLineHeight = currentFontSize * 1.2f;
+                float currentCharWidth = currentFontSize * charWidthFactor;
+
+                lines = WrapText(text, maxWidth, currentCharWidth);
+
+                float neededHeight = padding * 2f + lines.Count * currentLineHeight;
+                if (neededHeight <= maxAllowedHeight || currentFontSize <= MinFontSize)
+                {
+                    lineHeight = currentLineHeight;
+                    return currentFontSize;
+                }
+
+                currentFontSize -= ShrinkStep;
+                if (currentFontSize < MinFontSize)
+                    currentFontSize = MinFontSize;
+            }
         }
     }
 }
