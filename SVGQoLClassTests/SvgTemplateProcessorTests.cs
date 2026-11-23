@@ -115,16 +115,28 @@ namespace SVGQoLClass.Tests
         {
             try
             {
-                if (_testName != null)
+                if (!string.IsNullOrEmpty(_testName))
                 {
                     var dir = Path.Combine(_runDir, _testName);
-                    if (Directory.Exists(dir)) Directory.Delete(dir, true);
+
+                    if (Directory.Exists(dir))
+                        Directory.Delete(dir, true);
                 }
-                if (Directory.Exists(_runDir)) Directory.Delete(_runDir, true);
             }
             catch
             {
-                // Игнорируем ошибки удаления temp-файлов (например, если файл занят)
+            }
+        }
+        [AssemblyCleanup]
+        public static void AssemblyCleanup()
+        {
+            try
+            {
+                if (Directory.Exists(_runDir))
+                    Directory.Delete(_runDir, true);
+            }
+            catch
+            {
             }
         }
 
